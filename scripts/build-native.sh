@@ -12,6 +12,7 @@ LLAMA_SRC="${LLAMA_SRC:-$HOME/llama-src/llama.cpp-1.0.0}"
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="${BUILD_DIR:-$PROJECT_DIR/build-native}"
 JOBS="${JOBS:-2}"
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 JNI_LIBS="$PROJECT_DIR/app/src/main/jniLibs/arm64-v8a"
 
 if [ ! -f "$LLAMA_SRC/include/llama.h" ]; then
@@ -30,6 +31,10 @@ cmake --build "$BUILD_DIR" --target localmind_llama -j "$JOBS"
 
 mkdir -p "$JNI_LIBS"
 cp "$BUILD_DIR/liblocalmind_llama.so" "$JNI_LIBS/liblocalmind_llama.so"
+# Keep the packaged library small; symbols are not needed at runtime.
+if command -v strip >/dev/null 2>&1; then
+    strip --strip-unneeded "$JNI_LIBS/liblocalmind_llama.so"
+fi
 # Termux has no static libc++ for this target; the shared runtime must ship
 # alongside the library. It only depends on libc, libm and libdl.
 cp "$PREFIX/lib/libc++_shared.so" "$JNI_LIBS/libc++_shared.so"
