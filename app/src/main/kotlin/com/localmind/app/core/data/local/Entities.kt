@@ -1,5 +1,6 @@
 package com.localmind.app.core.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -53,7 +54,7 @@ data class ModelEntity(
     val quantization: String?,
     val loadState: String,
     val backendId: String? = null,
-    val validation: String = "UNVERIFIED",
+    @ColumnInfo(defaultValue = "'UNVERIFIED'") val validation: String = "UNVERIFIED",
     val validationMessage: String? = null,
     val architecture: String? = null,
     val parameterCount: Long? = null,
@@ -64,8 +65,8 @@ data class ModelEntity(
     val headCount: Int? = null,
     val headCountKv: Int? = null,
     val chatTemplate: String? = null,
-    val contextLength: Int = 4096,
-    val threadCount: Int = 0,
-    val batchSize: Int = 512,
-    val gpuLayers: Int = 0,
+    @ColumnInfo(defaultValue = "4096") val contextLength: Int = 4096,
+    @ColumnInfo(defaultValue = "0") val threadCount: Int = 0,
+    @ColumnInfo(defaultValue = "512") val batchSize: Int = 512,
+    @ColumnInfo(defaultValue = "0") val gpuLayers: Int = 0,
 )

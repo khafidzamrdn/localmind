@@ -4,23 +4,23 @@ Local-first AI workspace for Android. LocalMind is a native Kotlin + Jetpack Com
 on-device models and, in later milestones, running an approval-gated coding agent against a user-granted
 project workspace.
 
-This repository currently contains **Milestone 1 — Foundation**. Chat, persistence, streaming UI, model
-registration and settings are real. Native GGUF inference, agent tools and workspaces are not implemented yet
-and are clearly labeled in the app.
+This repository currently contains **Milestone 2 — Local GGUF inference**. Chat, persistence, streaming UI,
+GGUF validation, model management and a bundled llama.cpp CPU backend are real. Agent tools and workspaces are
+not implemented yet and are clearly labeled in the app.
 
 ## Status
 
 | Item | State |
 | --- | --- |
 | Debug APK | Built successfully (`app/build/outputs/apk/debug/app-debug.apk`) |
-| Unit tests | 19 passing (`:app:testDebugUnitTest`) |
+| Unit tests | 30 passing (`:app:testDebugUnitTest`) |
 | Minimum Android | 10 (API 29) |
 | Target SDK | 35 |
-| AI backend | Demo engine (simulated, clearly labeled) |
+| AI backend | llama.cpp `v1.0.0`, CPU, arm64-v8a (demo engine fallback) |
 | Network permission | **None** — the manifest has no `INTERNET` permission |
 
-See [docs/MILESTONE-1.md](docs/MILESTONE-1.md) for the build report and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-for the design.
+See [docs/MILESTONE-2.md](docs/MILESTONE-2.md) for the latest build report and
+[docs/MILESTONE-1.md](docs/MILESTONE-1.md) for the foundation report.
 
 ## What works in this build
 
@@ -31,18 +31,22 @@ for the design.
   heuristic syntax highlighting and a copy action. The parser is custom, pure Kotlin and unit-tested.
 - **Conversation history drawer** with search by title, pin, rename, delete, grouping by date (Today,
   Yesterday, Previous 7 days, Older), plus context-usage indicator in the chat header.
-- **Model registry** with Android Storage Access Framework import (`ACTION_OPEN_DOCUMENT`), persisted read
-  grants, GGUF format and quantization detection, size/URI details, set default, remove from library (never
-  deletes the file). Unsupported files are marked and cannot be selected.
+- **Model registry and runtime** with Android Storage Access Framework import (`ACTION_OPEN_DOCUMENT`),
+  persisted read grants, GGUF header validation (magic/version/metadata/tensors), parameter count, architecture,
+  tensor quantization, trained context and chat template, per-model context/threads/batch configuration,
+  load/unload with a pre-load memory estimate and confirmation for tight/risky fits, and removal that never
+  deletes the file.
+- **Real local inference** through the bundled llama.cpp JNI backend: native chat templating, tokenizer-level
+  context budgeting, streaming tokens with a working stop button, automatic unload on model switch, and a
+  clearly labeled demo fallback when the native library or a loadable model is unavailable.
 - **Settings** persisted with DataStore: dark/light/system theme, system prompt, sampling parameters, context
   length, tool policy documentation, storage usage, delete all chats, backend status and about.
 - **Projects tab** that documents the upcoming workspace model without pretending it exists.
 
 ## What is intentionally not implemented yet
 
-- Native GGUF loading and inference (llama.cpp or another backend). The chat uses
-  `FakeInferenceEngine`, and both the empty state and the header label it as a demo.
-- Model resource estimation / memory warnings at load time.
+- GPU acceleration. The bundled llama.cpp build is CPU-only; the GPU row is disabled and says so.
+- Non-arm64 native builds. Only `arm64-v8a` is packaged; other ABIs use the demo engine.
 - Agent orchestrator, tool registry, permission prompts, agent task panel.
 - Workspace folder grants, file explorer, project indexing, context retrieval.
 - File attachments, conversation summarization, chat paging, message search.
@@ -60,7 +64,8 @@ app/src/main/kotlin/com/localmind/app
 ├── core
 │   ├── domain/{model,repository}   # pure Kotlin entities + repository contracts
 │   ├── data/{local,repository,settings}
-│   ├── inference                   # InferenceEngine abstraction + demo backend
+│   ├── gguf                        # pure-Kotlin GGUF parser + SAF validator
+│   ├── inference                   # contracts, controller, estimator, demo + llama.cpp engines
 │   ├── ui/{theme,components,markdown}
 │   └── util
 ├── di/AppContainer.kt              # manual DI
@@ -69,6 +74,10 @@ app/src/main/kotlin/com/localmind/app
 ├── AppViewModel.kt
 ├── LocalMindApplication.kt
 └── MainActivity.kt
+
+app/src/main/cpp/localmind_llama.cpp   # JNI bridge to llama.cpp
+app/src/main/jniLibs/arm64-v8a/        # committed native payload
+scripts/build-native.sh                # reproducible native build
 ```
 
 Core interfaces: `InferenceEngine`, `ConversationRepository`, `ModelRepository`, `SettingsRepository`.
@@ -106,14 +115,27 @@ export JAVA_HOME=$PREFIX/lib/jvm/java-21-openjdk
 
 The project was built and tested with this setup. `local.properties` is ignored by git.
 
-> The debug APK is large (about 58 MB) because it packages the full Material icon set without shrinking.
-> A release build with R8 will be significantly smaller; release signing is not configured yet.
+### Rebuilding the native backend (optional)
 
-## Importing models
+`liblocalmind_llama.so` and `libc++_shared.so` are committed under `app/src/main/jniLibs/arm64-v8a`, so a normal
+Gradle build needs no NDK. To rebuild them from the pinned llama.cpp `v1.0.0` source:
+
+```bash
+pkg install cmake ninja clang
+LLAMA_SRC=$HOME/llama-src/llama.cpp-1.0.0 ./scripts/build-native.sh
+```
+
+The script uses Termux clang (target `aarch64-unknown-linux-android24`) because the official NDK's toolchain is
+x86_64-hosted and cannot run here. See [docs/MILESTONE-2.md](docs/MILESTONE-2.md) for details.
+
+> The debug APK is large (about 69 MB) because it packages the full Material icon set and the native libraries
+> without shrinking. A release build with R8 will be significantly smaller; release signing is not configured yet.
+
+## Importing and running models
 
 See [docs/MODEL-IMPORT.md](docs/MODEL-IMPORT.md). Short version: open **Models → Import**, pick a `.gguf` file.
-LocalMind stores only metadata plus a persisted read grant. The selected file will be used by the native backend
-in Milestone 2; it is **not** loaded in this build.
+LocalMind validates the header without reading the weights, stores only metadata plus a persisted read grant, and
+loads the file on demand (first send, or the **Load** button). The file itself is never copied or deleted.
 
 ## Privacy
 
@@ -123,9 +145,9 @@ in Milestone 2; it is **not** loaded in this build.
 
 ## Roadmap
 
-1. **Foundation** — done in this milestone.
-2. **Local inference** — llama.cpp-compatible Android backend, model validation, load/unload, memory checks,
-   real streaming, backend configuration.
+1. **Foundation** — done.
+2. **Local inference** — done: llama.cpp CPU backend, GGUF validation, load/unload, memory checks, real
+   streaming, backend configuration.
 3. **Agent core** — structured tool protocol, registry, permission engine, approval UI, task panel.
 4. **Workspace** — SAF folder grants, file explorer, project tree, context indexing.
 5. **Coding tools** — search/read/write/edit with diff previews and confirmations.

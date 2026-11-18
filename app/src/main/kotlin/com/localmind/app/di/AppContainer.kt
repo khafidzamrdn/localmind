@@ -13,6 +13,7 @@ import com.localmind.app.core.inference.FakeInferenceEngine
 import com.localmind.app.core.inference.InferenceEngine
 import com.localmind.app.core.inference.LocalInferenceController
 import com.localmind.app.core.inference.ResourceEstimator
+import com.localmind.app.core.inference.llama.LlamaCppEngine
 
 /**
  * Manual dependency container. Kept deliberately small and explicit so the
@@ -47,11 +48,14 @@ class AppContainer(context: Context) {
     val resourceEstimator: ResourceEstimator by lazy { ResourceEstimator(appContext) }
 
     /**
-     * The native llama.cpp backend is added in Milestone 2. Until its shared
-     * library is packaged and loadable on the device this binding stays on the
-     * clearly labeled demo engine.
+     * llama.cpp is used when its shared library is packaged for the device
+     * ABI and can be loaded. On unsupported builds (for example 32-bit
+     * devices or an emulator without the arm64 library) the app stays usable
+     * with the clearly labelled demo engine instead of crashing.
      */
-    val inferenceEngine: InferenceEngine by lazy { FakeInferenceEngine() }
+    val inferenceEngine: InferenceEngine by lazy {
+        LlamaCppEngine.createIfAvailable(appContext.contentResolver) ?: FakeInferenceEngine()
+    }
 
     val inferenceController: LocalInferenceController by lazy {
         LocalInferenceController(
