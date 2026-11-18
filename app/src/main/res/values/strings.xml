@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">LocalMind</string>
+    <string name="nav_chat">Chat</string>
+    <string name="nav_projects">Projects</string>
+    <string name="nav_models">Models</string>
+    <string name="nav_settings">Settings</string>
+    <string name="action_send">Send message</string>
+    <string name="action_stop">Stop generating</string>
+    <string name="action_new_chat">New chat</string>
+    <string name="action_import_model">Import model</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_edit">Edit</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_save">Save</string>
+    <string name="action_close">Close</string>
+    <string name="action_rename">Rename</string>
+</resources>

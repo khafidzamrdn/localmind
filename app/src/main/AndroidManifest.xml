@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      LocalMind is offline-first. No INTERNET permission is declared or requested
+      for Milestone 1. A network permission will only be added alongside an
+      explicitly opt-in remote backend in a later milestone.
+    -->
+
+    <application
+        android:name=".LocalMindApplication"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.LocalMind"
+        android:enableOnBackInvokedCallback="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.LocalMind">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
