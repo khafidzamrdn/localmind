@@ -76,6 +76,9 @@ fun ModelEntity.toDomain() = LocalModel(
     threadCount = threadCount,
     batchSize = batchSize,
     gpuLayers = gpuLayers,
+    runtimeValidated = runtimeValidated,
+    runtimeDescription = runtimeDescription,
+    runtimeMessage = runtimeMessage,
 )
 
 fun LocalModel.toEntity() = ModelEntity(
@@ -103,4 +106,7 @@ fun LocalModel.toEntity() = ModelEntity(
     threadCount = threadCount,
     batchSize = batchSize,
     gpuLayers = gpuLayers,
+    runtimeValidated = runtimeValidated,
+    runtimeDescription = runtimeDescription,
+    runtimeMessage = runtimeMessage,
 )

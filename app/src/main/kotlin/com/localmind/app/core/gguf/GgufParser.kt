@@ -91,6 +91,8 @@ object GgufParser {
             parameterCount = if (counted) parameterCount else null,
             tensorTypes = tensorTypes,
             chatTemplate = metadata.chatTemplate,
+            splitCount = metadata.splitCount,
+            splitIndex = metadata.splitIndex,
         )
     }
 
@@ -196,6 +198,10 @@ object GgufParser {
             private set
         var chatTemplate: String? = null
             private set
+        var splitCount: Int? = null
+            private set
+        var splitIndex: Int? = null
+            private set
 
         fun wantsFirstArrayValue(key: String): Boolean = key.endsWith(".attention.head_count_kv")
 
@@ -204,6 +210,8 @@ object GgufParser {
                 key == "general.architecture" && value is String -> architecture = value
                 key == "general.name" && value is String -> modelName = value
                 key == "tokenizer.chat_template" && value is String -> chatTemplate = value
+                key == "split.count" && value is Number -> splitCount = value.toInt()
+                key == "split.no" && value is Number -> splitIndex = value.toInt()
                 key.endsWith(".context_length") && value is Number -> contextLength = value.toInt()
                 key.endsWith(".embedding_length") && value is Number -> embeddingLength = value.toInt()
                 key.endsWith(".block_count") && value is Number -> blockCount = value.toInt()
@@ -312,7 +320,11 @@ data class GgufMetadata(
     val parameterCount: Long?,
     val tensorTypes: Map<Int, Int>,
     val chatTemplate: String?,
+    val splitCount: Int? = null,
+    val splitIndex: Int? = null,
 ) {
+    /** True when this file is one part of a multi-file GGUF split. */
+    val isSplit: Boolean get() = (splitCount ?: 1) > 1
     /** Human-readable parameter count, for example `7.6B`. */
     fun parameterCountLabel(): String? = parameterCount?.let { count ->
         when {

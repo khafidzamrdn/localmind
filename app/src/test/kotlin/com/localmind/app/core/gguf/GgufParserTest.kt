@@ -110,19 +110,19 @@ class GgufParserTest {
     }
 
     @Test
-    fun `ignores unrelated metadata keys`() {
+    fun `detects split GGUF`() {
         val file = GgufWriter().apply {
             header(version = 3, tensorCount = 1, metadataCount = 2)
-            u32("some.unknown.key", 42)
-            u32("llama.context_length", 4_096)
+            u32("split.count", 2)
+            u32("split.no", 1)
             tensor("t", listOf(4), type = 0)
         }.toByteArray()
 
         val metadata = GgufParser.parse(ByteArrayInputStream(file))
 
-        assertNull(metadata.architecture)
-        assertEquals(4_096, metadata.trainedContextLength)
-        assertNull(metadata.modelName)
+        assertTrue(metadata.isSplit)
+        assertEquals(2, metadata.splitCount)
+        assertEquals(1, metadata.splitIndex)
     }
 
     private class GgufWriter {

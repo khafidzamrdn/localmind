@@ -105,6 +105,21 @@ interface ModelDao {
         gpuLayers: Int,
     )
 
+    @Query(
+        """
+        UPDATE models
+        SET runtimeValidated = :validated, runtimeDescription = :description,
+            runtimeMessage = :message
+        WHERE id = :id
+        """,
+    )
+    suspend fun updateRuntimeValidation(
+        id: String,
+        validated: Boolean,
+        description: String?,
+        message: String?,
+    )
+
     @Query("DELETE FROM models WHERE id = :id")
     suspend fun delete(id: String)
 }

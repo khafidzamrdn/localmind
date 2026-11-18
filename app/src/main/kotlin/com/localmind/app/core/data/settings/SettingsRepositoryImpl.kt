@@ -68,6 +68,7 @@ class SettingsRepositoryImpl(
             prefs[Keys.THREAD_COUNT] = defaults.threadCount
             prefs[Keys.BATCH_SIZE] = defaults.batchSize
             prefs[Keys.GPU_ENABLED] = defaults.gpuEnabled
+            prefs[Keys.LOW_MEMORY] = defaults.lowMemory
         }
     }
 
@@ -91,6 +92,7 @@ class SettingsRepositoryImpl(
                 threadCount = this[Keys.THREAD_COUNT] ?: defaults.runtime.threadCount,
                 batchSize = this[Keys.BATCH_SIZE] ?: defaults.runtime.batchSize,
                 gpuEnabled = this[Keys.GPU_ENABLED] ?: defaults.runtime.gpuEnabled,
+                lowMemory = this[Keys.LOW_MEMORY] ?: defaults.runtime.lowMemory,
             ),
         )
     }
@@ -108,6 +110,7 @@ class SettingsRepositoryImpl(
         val THREAD_COUNT = intPreferencesKey("runtime_thread_count")
         val BATCH_SIZE = intPreferencesKey("runtime_batch_size")
         val GPU_ENABLED = booleanPreferencesKey("runtime_gpu_enabled")
+        val LOW_MEMORY = booleanPreferencesKey("runtime_low_memory")
 
         @Suppress("unused")
         val RESERVED_FOR_AGENT_TOOLS = booleanPreferencesKey("agent_tools_enabled")

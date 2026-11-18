@@ -24,7 +24,17 @@ class GgufModelValidator(
                 if (metadata.architecture.isNullOrBlank()) {
                     return@withContext model.copy(
                         validation = ModelValidation.INVALID,
+                        runtimeValidated = false,
                         validationMessage = "GGUF header has no general.architecture entry.",
+                    )
+                }
+                if (metadata.isSplit) {
+                    val part = (metadata.splitIndex ?: 0) + 1
+                    return@withContext model.copy(
+                        validation = ModelValidation.INVALID,
+                        runtimeValidated = false,
+                        validationMessage = "This is part $part of a ${metadata.splitCount}-part split GGUF. " +
+                            "LocalMind can only load a single-file GGUF; merge the parts first.",
                     )
                 }
                 val trained = metadata.trainedContextLength
@@ -36,7 +46,7 @@ class GgufModelValidator(
                     preferredContext
                 }
                 model.copy(
-                    validation = ModelValidation.VALID,
+                    validation = ModelValidation.HEADER_VALID,
                     validationMessage = null,
                     architecture = metadata.architecture,
                     parameterCount = metadata.parameterCount,
@@ -51,26 +61,31 @@ class GgufModelValidator(
                 )
             } ?: model.copy(
                 validation = ModelValidation.MISSING,
+                runtimeValidated = false,
                 validationMessage = "The document provider returned no data. Re-import the file.",
             )
         } catch (error: GgufFormatException) {
             model.copy(
                 validation = ModelValidation.INVALID,
+                runtimeValidated = false,
                 validationMessage = error.message ?: "The file is not a valid GGUF model.",
             )
         } catch (error: FileNotFoundException) {
             model.copy(
                 validation = ModelValidation.MISSING,
+                runtimeValidated = false,
                 validationMessage = "The file is no longer available at its original location.",
             )
         } catch (error: SecurityException) {
             model.copy(
                 validation = ModelValidation.MISSING,
+                runtimeValidated = false,
                 validationMessage = "Read permission was revoked. Re-import the file to restore access.",
             )
         } catch (error: IOException) {
             model.copy(
                 validation = ModelValidation.INVALID,
+                runtimeValidated = false,
                 validationMessage = error.message ?: "Could not read the model file.",
             )
         }

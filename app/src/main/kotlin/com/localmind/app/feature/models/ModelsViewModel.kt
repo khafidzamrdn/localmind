@@ -16,6 +16,7 @@ import com.localmind.app.core.domain.model.detectQuantization
 import com.localmind.app.core.domain.repository.ModelRepository
 import com.localmind.app.core.domain.repository.SettingsRepository
 import com.localmind.app.core.gguf.GgufModelValidator
+import com.localmind.app.core.inference.EngineDiagnostics
 import com.localmind.app.core.inference.LocalInferenceController
 import com.localmind.app.core.inference.ModelRuntimeState
 import com.localmind.app.core.inference.ResourceEstimate
@@ -37,6 +38,13 @@ data class LoadRequest(
     val estimate: ResourceEstimate,
 )
 
+/** Diagnostics state for the dialog: the model plus its latest backend snapshot. */
+data class DiagnosticsState(
+    val model: LocalModel,
+    val diagnostics: EngineDiagnostics?,
+    val loading: Boolean,
+)
+
 class ModelsViewModel(
     private val modelRepository: ModelRepository,
     private val settingsRepository: SettingsRepository,
@@ -56,6 +64,7 @@ class ModelsViewModel(
 
     val backendName: String = controller.backendName
     val backendIsDemo: Boolean = controller.isDemo
+    val backendSupportsProbe: Boolean = controller.supportsRuntimeProbe
     val gpuSupported: Boolean = controller.capabilities().gpuAcceleration
     val maxThreads: Int = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
 
@@ -65,11 +74,17 @@ class ModelsViewModel(
     private val _validatingModelIds = MutableStateFlow<Set<String>>(emptySet())
     val validatingModelIds: StateFlow<Set<String>> = _validatingModelIds.asStateFlow()
 
+    private val _probingModelIds = MutableStateFlow<Set<String>>(emptySet())
+    val probingModelIds: StateFlow<Set<String>> = _probingModelIds.asStateFlow()
+
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
 
     private val _loadRequest = MutableStateFlow<LoadRequest?>(null)
     val loadRequest: StateFlow<LoadRequest?> = _loadRequest.asStateFlow()
+
+    private val _diagnostics = MutableStateFlow<DiagnosticsState?>(null)
+    val diagnostics: StateFlow<DiagnosticsState?> = _diagnostics.asStateFlow()
 
     init {
         revalidateUnknownModels()
@@ -141,7 +156,7 @@ class ModelsViewModel(
                         }
                         modelRepository.addModel(validated)
                         added++
-                        if (validated.validation != ModelValidation.VALID) invalid++
+                        if (validated.validation != ModelValidation.HEADER_VALID) invalid++
                     }
                 } catch (error: Exception) {
                     failed++
@@ -165,8 +180,8 @@ class ModelsViewModel(
             val validated = validator.validate(model)
             modelRepository.updateModel(validated)
             _validatingModelIds.value -= modelId
-            _message.value = if (validated.validation == ModelValidation.VALID) {
-                "GGUF header verified."
+            _message.value = if (validated.validation == ModelValidation.HEADER_VALID) {
+                "GGUF header validated."
             } else {
                 validated.validationMessage ?: "The model could not be validated."
             }
@@ -220,6 +235,46 @@ class ModelsViewModel(
             controller.unload()
             _message.value = "Model unloaded and memory released."
         }
+    }
+
+    /** Stops an in-flight load; the native progress callback aborts llama.cpp. */
+    fun cancelLoad() {
+        controller.cancelLoad()
+        _message.value = "Cancelling load…"
+    }
+
+    /**
+     * Runs the vocabulary-only runtime probe. This proves that the bundled
+     * llama.cpp understands the architecture and quantization without loading
+     * the weights, and stores the result as "runtime compatible".
+     */
+    fun testCompatibility(modelId: String) {
+        viewModelScope.launch {
+            if (modelId in _probingModelIds.value) return@launch
+            _probingModelIds.value += modelId
+            controller.probeRuntime(modelId).fold(
+                onSuccess = { probe ->
+                    _message.value = "Runtime compatible: ${probe.summary}"
+                },
+                onFailure = { error ->
+                    _message.value = error.message ?: "The runtime compatibility check failed."
+                },
+            )
+            _probingModelIds.value -= modelId
+        }
+    }
+
+    /** Opens the diagnostics panel and refreshes the native snapshot. */
+    fun openDiagnostics(model: LocalModel) {
+        _diagnostics.value = DiagnosticsState(model, null, loading = true)
+        viewModelScope.launch {
+            val snapshot = runCatching { controller.diagnostics(model.id) }.getOrNull()
+            _diagnostics.value = DiagnosticsState(model, snapshot, loading = false)
+        }
+    }
+
+    fun closeDiagnostics() {
+        _diagnostics.value = null
     }
 
     fun configure(

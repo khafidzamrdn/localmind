@@ -48,6 +48,15 @@ class ModelRepositoryImpl(
         modelDao.updateConfig(modelId, contextLength, threadCount, batchSize, gpuLayers)
     }
 
+    override suspend fun updateRuntimeValidation(
+        modelId: String,
+        validated: Boolean,
+        description: String?,
+        message: String?,
+    ) {
+        modelDao.updateRuntimeValidation(modelId, validated, description, message)
+    }
+
     override suspend fun removeModel(modelId: String) {
         modelDao.delete(modelId)
     }

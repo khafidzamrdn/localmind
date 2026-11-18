@@ -39,9 +39,9 @@ class LocalModelTest {
             quantization = "Q4_K_M",
         )
         assertFalse(base.isUsable)
-        assertTrue(base.copy(validation = ModelValidation.VALID).isUsable)
+        assertTrue(base.copy(validation = ModelValidation.HEADER_VALID).isUsable)
         assertTrue(base.isQuantized)
-        assertFalse(base.copy(format = ModelFormat.UNKNOWN, validation = ModelValidation.VALID).isUsable)
+        assertFalse(base.copy(format = ModelFormat.UNKNOWN, validation = ModelValidation.HEADER_VALID).isUsable)
         assertFalse(base.copy(validation = ModelValidation.INVALID).isUsable)
     }
 
@@ -55,7 +55,7 @@ class LocalModelTest {
             importedAt = 0,
             format = ModelFormat.GGUF,
             quantization = null,
-            validation = ModelValidation.VALID,
+            validation = ModelValidation.HEADER_VALID,
             ggufQuantization = "Q5_K",
         )
         assertTrue(model.isUsable)

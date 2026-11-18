@@ -54,7 +54,8 @@ class AppContainer(context: Context) {
      * with the clearly labelled demo engine instead of crashing.
      */
     val inferenceEngine: InferenceEngine by lazy {
-        LlamaCppEngine.createIfAvailable(appContext.contentResolver) ?: FakeInferenceEngine()
+        LlamaCppEngine.createIfAvailable(appContext.contentResolver, appContext.cacheDir)
+            ?: FakeInferenceEngine()
     }
 
     val inferenceController: LocalInferenceController by lazy {

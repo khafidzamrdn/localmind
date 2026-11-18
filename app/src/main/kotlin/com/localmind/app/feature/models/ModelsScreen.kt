@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Memory
@@ -42,6 +43,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -67,6 +69,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.localmind.app.core.domain.model.LocalModel
 import com.localmind.app.core.domain.model.ModelValidation
+import com.localmind.app.core.inference.EngineDiagnostics
+import com.localmind.app.core.inference.LoadPhase
 import com.localmind.app.core.inference.ModelRuntimeState
 import com.localmind.app.core.inference.ResourceEstimate
 import com.localmind.app.core.inference.ResourceRisk
@@ -89,9 +93,11 @@ fun ModelsScreen(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val isImporting by viewModel.isImporting.collectAsStateWithLifecycle()
     val validatingIds by viewModel.validatingModelIds.collectAsStateWithLifecycle()
+    val probingIds by viewModel.probingModelIds.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val runtimeState by viewModel.runtimeState.collectAsStateWithLifecycle()
     val loadRequest by viewModel.loadRequest.collectAsStateWithLifecycle()
+    val diagnostics by viewModel.diagnostics.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
     var detailsModel by remember { mutableStateOf<LocalModel?>(null) }
@@ -156,8 +162,9 @@ fun ModelsScreen(
                         InfoBanner(
                             icon = Icons.Outlined.Info,
                             text = "Model files are opened through Android's document picker and are not copied. " +
-                                "Imports are validated by reading the GGUF header only; weights are read at load time. " +
-                                "Removing a model never deletes the original file.",
+                                "Imports validate the GGUF header and tensor layout only; runtime compatibility is " +
+                                "checked when you load the model or run Test runtime compatibility. Removing a model " +
+                                "never deletes the original file.",
                         )
                         if (viewModel.backendIsDemo) {
                             InfoBanner(
@@ -206,22 +213,29 @@ fun ModelsScreen(
                     }
                     items(models, key = { it.id }) { model ->
                         val loaded = (runtimeState as? ModelRuntimeState.Loaded)?.modelId == model.id
-                        val loading = (runtimeState as? ModelRuntimeState.Loading)?.modelId == model.id
+                        val loading = (runtimeState as? ModelRuntimeState.Loading)
+                            ?.takeIf { it.modelId == model.id }
                         val failure = (runtimeState as? ModelRuntimeState.Failed)
                             ?.takeIf { it.modelId == model.id }
                         ModelCard(
                             model = model,
                             isDefault = model.id == settings.activeModelId,
                             loaded = loaded,
-                            loading = loading,
+                            loadingPhase = loading?.phase,
+                            loadingPercent = loading?.percent ?: 0,
+                            probing = model.id in probingIds,
                             validating = model.id in validatingIds,
                             failureMessage = failure?.message,
                             loadEnabled = !viewModel.backendIsDemo,
+                            probeSupported = viewModel.backendSupportsProbe,
                             onLoad = { viewModel.requestLoad(model.id) },
+                            onCancelLoad = viewModel::cancelLoad,
                             onUnload = viewModel::unload,
                             onSetDefault = { viewModel.setDefaultModel(model.id) },
                             onClearDefault = viewModel::clearDefaultModel,
                             onRevalidate = { viewModel.revalidate(model.id) },
+                            onTestCompatibility = { viewModel.testCompatibility(model.id) },
+                            onDiagnostics = { viewModel.openDiagnostics(model) },
                             onConfigure = { configureModel = model },
                             onDetails = { detailsModel = model },
                             onRemove = { removeTarget = model },
@@ -242,8 +256,16 @@ fun ModelsScreen(
                 viewModel.revalidate(model.id)
                 detailsModel = null
             },
+            onDiagnostics = {
+                viewModel.openDiagnostics(model)
+                detailsModel = null
+            },
             onDismiss = { detailsModel = null },
         )
+    }
+
+    diagnostics?.let { state ->
+        DiagnosticsDialog(state = state, onDismiss = viewModel::closeDiagnostics)
     }
 
     configureModel?.let { model ->
@@ -321,15 +343,21 @@ private fun ModelCard(
     model: LocalModel,
     isDefault: Boolean,
     loaded: Boolean,
-    loading: Boolean,
+    loadingPhase: LoadPhase?,
+    loadingPercent: Int,
+    probing: Boolean,
     validating: Boolean,
     failureMessage: String?,
     loadEnabled: Boolean,
+    probeSupported: Boolean,
     onLoad: () -> Unit,
+    onCancelLoad: () -> Unit,
     onUnload: () -> Unit,
     onSetDefault: () -> Unit,
     onClearDefault: () -> Unit,
     onRevalidate: () -> Unit,
+    onTestCompatibility: () -> Unit,
+    onDiagnostics: () -> Unit,
     onConfigure: () -> Unit,
     onDetails: () -> Unit,
     onRemove: () -> Unit,
@@ -357,7 +385,7 @@ private fun ModelCard(
                         imageVector = Icons.Outlined.Memory,
                         contentDescription = null,
                         tint = when (model.validation) {
-                            ModelValidation.VALID -> MaterialTheme.colorScheme.primary
+                            ModelValidation.HEADER_VALID -> MaterialTheme.colorScheme.primary
                             ModelValidation.UNVERIFIED -> MaterialTheme.colorScheme.tertiary
                             else -> MaterialTheme.colorScheme.error
                         },
@@ -428,6 +456,24 @@ private fun ModelCard(
                             )
                         }
                         DropdownMenuItem(
+                            text = { Text(if (probing) "Checking runtime…" else "Test runtime compatibility") },
+                            enabled = model.isUsable && !probing && probeSupported,
+                            leadingIcon = { Icon(Icons.Outlined.Refresh, contentDescription = null) },
+                            onClick = {
+                                menuOpen = false
+                                onTestCompatibility()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Diagnostics") },
+                            enabled = probeSupported,
+                            leadingIcon = { Icon(Icons.Outlined.Info, contentDescription = null) },
+                            onClick = {
+                                menuOpen = false
+                                onDiagnostics()
+                            },
+                        )
+                        DropdownMenuItem(
                             text = { Text("Configure inference") },
                             leadingIcon = { Icon(Icons.Outlined.Tune, contentDescription = null) },
                             onClick = {
@@ -475,10 +521,15 @@ private fun ModelCard(
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
             ) {
                 when (model.validation) {
-                    ModelValidation.VALID -> StatusPill("Verified", MaterialTheme.colorScheme.secondary)
+                    ModelValidation.HEADER_VALID -> StatusPill("Header validated", MaterialTheme.colorScheme.secondary)
                     ModelValidation.UNVERIFIED -> StatusPill("Unverified", MaterialTheme.colorScheme.tertiary)
                     ModelValidation.INVALID -> StatusPill("Invalid", MaterialTheme.colorScheme.error)
                     ModelValidation.MISSING -> StatusPill("Missing", MaterialTheme.colorScheme.error)
+                }
+                if (model.runtimeValidated) {
+                    StatusPill("Runtime OK", MaterialTheme.colorScheme.secondary)
+                } else if (model.runtimeMessage != null && model.validation == ModelValidation.HEADER_VALID) {
+                    StatusPill("Runtime failed", MaterialTheme.colorScheme.error)
                 }
                 if (isDefault) {
                     StatusPill("Selected", MaterialTheme.colorScheme.primary)
@@ -489,8 +540,9 @@ private fun ModelCard(
                 Spacer(Modifier.weight(1f))
                 Text(
                     text = when {
-                        loading || validating -> "Working…"
+                        loadingPhase != null || validating || probing -> "Working…"
                         loaded -> "In memory"
+                        model.validation == ModelValidation.HEADER_VALID && !model.runtimeValidated -> "Runtime untested"
                         else -> "Not loaded"
                     },
                     style = MaterialTheme.typography.labelSmall,
@@ -512,8 +564,38 @@ private fun ModelCard(
                     text = failureMessage,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error,
+                    maxLines = 5,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
                 )
+            } else if (model.runtimeMessage != null && model.validation == ModelValidation.HEADER_VALID) {
+                Text(
+                    text = "Last runtime error: ${model.runtimeMessage}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+                )
+            }
+
+            if (loadingPhase != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 2.dp),
+                ) {
+                    LinearProgressIndicator(
+                        progress = { (loadingPercent.coerceIn(0, 100)) / 100f },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "${loadingPhase.label()} · $loadingPercent%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = extras.mutedText,
+                    )
+                }
             }
 
             Row(
@@ -532,18 +614,19 @@ private fun ModelCard(
                     modifier = Modifier.weight(1f),
                 )
                 when {
-                    loading -> OutlinedButton(onClick = {}, enabled = false) {
-                        CircularProgressIndicator(
+                    loadingPhase != null -> OutlinedButton(onClick = onCancelLoad) {
+                        Icon(
+                            imageVector = Icons.Outlined.Close,
+                            contentDescription = null,
                             modifier = Modifier.size(14.dp),
-                            strokeWidth = 2.dp,
                         )
                         Spacer(Modifier.width(6.dp))
-                        Text("Loading")
+                        Text("Cancel")
                     }
 
                     loaded -> OutlinedButton(onClick = onUnload) { Text("Unload") }
 
-                    model.validation != ModelValidation.VALID -> OutlinedButton(
+                    model.validation != ModelValidation.HEADER_VALID -> OutlinedButton(
                         onClick = onRevalidate,
                         enabled = !validating,
                     ) { Text(if (validating) "Checking…" else "Check file") }
@@ -560,14 +643,22 @@ private fun ModelCard(
     }
 }
 
+private fun LoadPhase.label(): String = when (this) {
+    LoadPhase.PREPARING -> "Opening document"
+    LoadPhase.COPYING -> "Copying to app cache"
+    LoadPhase.PROBING -> "Checking runtime compatibility"
+    LoadPhase.LOADING -> "Loading weights"
+}
+
 @Composable
 private fun MilestoneNote() {
     InfoBanner(
         icon = Icons.Outlined.Info,
         tone = MaterialTheme.colorScheme.tertiary,
-        text = "Load reads the GGUF weights through the persisted document URI and keeps them in RAM until you " +
-            "unload or switch models. Android may stop the app if free memory runs out, so large models show a " +
-            "warning first.",
+        text = "Load reads the GGUF weights in place when the document provider exposes a seekable file. " +
+            "Providers that only offer a pipe are copied to the app cache for the duration of the load and the " +
+            "copy is deleted on unload. Android may stop the app if free memory runs out, so large models show " +
+            "a warning first.",
         modifier = Modifier.padding(top = 6.dp),
     )
 }
@@ -802,6 +893,7 @@ private fun ConfigureModelDialog(
 private fun ModelDetailsDialog(
     model: LocalModel,
     onRevalidate: () -> Unit,
+    onDiagnostics: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -814,7 +906,16 @@ private fun ModelDetailsDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                DetailRow("Validation", model.validation.name.lowercase())
+                DetailRow("Header check", model.validation.name.lowercase())
+                DetailRow(
+                    "Runtime status",
+                    when {
+                        model.runtimeValidated -> "compatible with this build"
+                        model.runtimeMessage != null -> "failed"
+                        else -> "not tested yet"
+                    },
+                )
+                model.runtimeDescription?.let { DetailRow("Runtime detail", it) }
                 DetailRow("Architecture", model.architecture ?: "not reported")
                 DetailRow("Parameters", model.parameterCount?.let { formatParameterCount(it) } ?: "unknown")
                 DetailRow("Tensor quantization", model.quantizationLabel ?: "not detected")
@@ -825,11 +926,14 @@ private fun ModelDetailsDialog(
                 DetailRow("KV heads", model.headCountKv?.toString() ?: "unknown")
                 DetailRow("Chat template", if (model.chatTemplate != null) "embedded" else "fallback formatting")
                 DetailRow("Size", if (model.sizeBytes > 0) formatFileSize(model.sizeBytes) else "unknown")
-                DetailRow("Runtime", "${model.contextLength} ctx · " +
+                DetailRow("Load config", "${model.contextLength} ctx · " +
                     (if (model.threadCount == 0) "auto threads" else "${model.threadCount} threads") +
                     " · batch ${model.batchSize}")
                 model.validationMessage?.let { message ->
                     DetailRow("Issue", message)
+                }
+                model.runtimeMessage?.let { message ->
+                    DetailRow("Runtime error", message)
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(
@@ -845,12 +949,89 @@ private fun ModelDetailsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onRevalidate) { Text("Re-validate") }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onDiagnostics) { Text("Diagnostics") }
+                TextButton(onClick = onRevalidate) { Text("Re-validate") }
+            }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Close") }
         },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
+}
+
+@Composable
+private fun DiagnosticsDialog(
+    state: DiagnosticsState,
+    onDismiss: () -> Unit,
+) {
+    val extras = LocalMindExtras.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Diagnostics", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 460.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = state.model.displayName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = extras.mutedText,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val data = state.diagnostics
+                if (state.loading) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Collecting backend state…", style = MaterialTheme.typography.bodySmall)
+                    }
+                } else if (data == null) {
+                    Text(
+                        text = "The native backend did not return diagnostics for this model.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                } else {
+                    DetailRow("Architecture", data.architecture ?: "not reported")
+                    DetailRow("Quantization", data.quantization ?: "not detected")
+                    DetailRow("Load config", data.loadConfig)
+                    Spacer(Modifier.height(4.dp))
+                    DiagnosticBlock("File accessibility", data.fileAccess)
+                    DiagnosticBlock("Backend", data.backendInfo)
+                    data.lastError?.let { DiagnosticBlock("Last error", it, error = true) }
+                    data.nativeLog?.let { DiagnosticBlock("Native log (llama.cpp)", it) }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
+}
+
+@Composable
+private fun DiagnosticBlock(label: String, value: String, error: Boolean = false) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelSmall,
+        color = LocalMindExtras.current.mutedText,
+    )
+    Text(
+        text = value,
+        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+        color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                MaterialTheme.shapes.small,
+            )
+            .padding(8.dp),
     )
 }
 

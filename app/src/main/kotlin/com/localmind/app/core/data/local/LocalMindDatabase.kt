@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [ConversationEntity::class, MessageEntity::class, ModelEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class LocalMindDatabase : RoomDatabase() {
@@ -46,9 +46,24 @@ abstract class LocalMindDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Adds runtime-compatibility state and renames the header status so the
+         * UI never claims "Verified" for a header-only check.
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE models ADD COLUMN runtimeValidated INTEGER NOT NULL DEFAULT 0",
+                )
+                db.execSQL("ALTER TABLE models ADD COLUMN runtimeDescription TEXT")
+                db.execSQL("ALTER TABLE models ADD COLUMN runtimeMessage TEXT")
+                db.execSQL("UPDATE models SET validation = 'HEADER_VALID' WHERE validation = 'VALID'")
+            }
+        }
+
         fun build(context: Context): LocalMindDatabase =
             Room.databaseBuilder(context.applicationContext, LocalMindDatabase::class.java, DATABASE_NAME)
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }

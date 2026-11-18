@@ -69,4 +69,7 @@ data class ModelEntity(
     @ColumnInfo(defaultValue = "0") val threadCount: Int = 0,
     @ColumnInfo(defaultValue = "512") val batchSize: Int = 512,
     @ColumnInfo(defaultValue = "0") val gpuLayers: Int = 0,
+    @ColumnInfo(defaultValue = "0") val runtimeValidated: Boolean = false,
+    val runtimeDescription: String? = null,
+    val runtimeMessage: String? = null,
 )

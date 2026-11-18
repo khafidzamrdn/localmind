@@ -26,6 +26,14 @@ interface ModelRepository {
         gpuLayers: Int,
     )
 
+    /** Persists the result of a runtime probe/load without touching file metadata. */
+    suspend fun updateRuntimeValidation(
+        modelId: String,
+        validated: Boolean,
+        description: String?,
+        message: String?,
+    )
+
     /** Removes the registry entry only; the user's file is never deleted. */
     suspend fun removeModel(modelId: String)
 }

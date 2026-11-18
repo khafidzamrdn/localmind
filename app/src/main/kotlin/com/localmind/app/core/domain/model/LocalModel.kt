@@ -9,11 +9,13 @@ enum class ModelFormat {
 /**
  * Result of reading the GGUF header. [UNVERIFIED] means the file was registered
  * but its contents have not been inspected yet (for example rows migrated from
- * Milestone 1). Only [VALID] files may be loaded.
+ * Milestone 1). [HEADER_VALID] means the GGUF header and tensor descriptors
+ * parsed successfully; it does *not* mean the bundled llama.cpp build can run
+ * the model. That is tracked separately by [LocalModel.runtimeValidated].
  */
 enum class ModelValidation {
     UNVERIFIED,
-    VALID,
+    HEADER_VALID,
     INVALID,
     MISSING,
 }
@@ -56,9 +58,15 @@ data class LocalModel(
     val threadCount: Int = 0,
     val batchSize: Int = DEFAULT_BATCH_SIZE,
     val gpuLayers: Int = 0,
+    /** True after this llama.cpp build actually ran the model (probe or load). */
+    val runtimeValidated: Boolean = false,
+    /** Short description of the successful runtime probe, e.g. `llama.cpp 1.0.0 · qwen2`. */
+    val runtimeDescription: String? = null,
+    /** Last runtime failure reported by the native backend, if any. */
+    val runtimeMessage: String? = null,
 ) {
     /** True only for files whose GGUF header was read successfully. */
-    val isUsable: Boolean get() = format == ModelFormat.GGUF && validation == ModelValidation.VALID
+    val isUsable: Boolean get() = format == ModelFormat.GGUF && validation == ModelValidation.HEADER_VALID
     val isQuantized: Boolean get() = (ggufQuantization ?: quantization) != null
 
     /** Quantization from the GGUF tensor types, falling back to the file name. */

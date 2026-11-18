@@ -36,6 +36,7 @@ target_link_libraries(localmind_llama PRIVATE
     ggml
     ggml-base
     ggml-cpu
+    log
 )
 set_target_properties(localmind_llama PROPERTIES
     CXX_VISIBILITY_PRESET hidden

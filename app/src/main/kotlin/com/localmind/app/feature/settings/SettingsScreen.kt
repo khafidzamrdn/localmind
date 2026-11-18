@@ -31,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -337,6 +338,29 @@ fun SettingsScreen(
                             label = { Text("$batch") },
                         )
                     }
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Low-memory profile",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = if (settings.runtime.lowMemory) {
+                                "On · context capped at 2k, batch 256, max 4 threads"
+                            } else {
+                                "Off · uses each model's own context, batch and threads"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = extras.mutedText,
+                        )
+                    }
+                    Switch(
+                        checked = settings.runtime.lowMemory,
+                        onCheckedChange = viewModel::setLowMemory,
+                    )
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(

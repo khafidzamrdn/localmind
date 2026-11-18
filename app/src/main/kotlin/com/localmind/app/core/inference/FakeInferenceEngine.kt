@@ -32,11 +32,18 @@ class FakeInferenceEngine : InferenceEngine {
         configurableContext = false,
     )
 
-    override suspend fun loadModel(model: LocalModel, config: InferenceConfig): Result<Unit> {
+    override suspend fun loadModel(
+        model: LocalModel,
+        config: InferenceConfig,
+        onProgress: (LoadProgress) -> Unit,
+        isCancelled: () -> Boolean,
+    ): Result<Unit> {
         if (model.format != ModelFormat.GGUF) {
             return Result.failure(IllegalArgumentException("Unsupported model format: ${model.displayName}"))
         }
+        onProgress(LoadProgress(LoadPhase.LOADING, 0))
         delay(250)
+        onProgress(LoadProgress(LoadPhase.LOADING, 100))
         loadedModelId.set(model.id)
         return Result.success(Unit)
     }

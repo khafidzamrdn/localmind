@@ -1,21 +1,27 @@
 package com.localmind.app.core.inference.llama
 
 import android.content.ContentResolver
-import android.net.Uri
-import android.os.ParcelFileDescriptor
-import com.localmind.app.core.domain.model.ChatMessage
 import com.localmind.app.core.domain.model.LocalModel
 import com.localmind.app.core.domain.model.MessageRole
 import com.localmind.app.core.inference.EngineCapabilities
+import com.localmind.app.core.inference.EngineDiagnostics
 import com.localmind.app.core.inference.InferenceConfig
 import com.localmind.app.core.inference.InferenceEngine
 import com.localmind.app.core.inference.InferenceEvent
 import com.localmind.app.core.inference.InferenceRequest
+import com.localmind.app.core.inference.LoadPhase
+import com.localmind.app.core.inference.LoadProgress
+import com.localmind.app.core.inference.RuntimeProbeResult
 import com.localmind.app.core.inference.TokenUsage
 import com.localmind.app.core.inference.estimateTokens
+import java.io.File
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
@@ -26,23 +32,34 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
- * llama.cpp backed engine. Model weights are read through the persisted SAF
- * URI using `/proc/self/fd/N`, so the file is never copied into app storage.
+ * llama.cpp backed engine.
  *
- * The instance owns at most one loaded model. [loadModel] is serialized so a
- * fast model switch cannot leak a context; [generate] streams pieces produced
- * by the native tokenizer/sampler and stops as soon as the collector is
- * cancelled.
+ * Loading is a two-step process:
+ *
+ *  1. a vocabulary-only *probe* that proves the bundled llama.cpp build knows
+ *     the model architecture and quantization, then
+ *  2. the real load that reads the weights, reports progress and is
+ *     cancellable through the native progress callback.
+ *
+ * The document URI is resolved through [ModelFileAccess], which falls back to
+ * an app-cache copy for providers that hand out a pipe instead of a seekable
+ * file. The user's file is never modified or deleted.
+ *
+ * All native entry points are guarded so unloading cannot race a decode, and
+ * every native exception is converted into a Kotlin [Result] failure instead of
+ * reaching the UI as a crash.
  */
 class LlamaCppEngine(
-    private val contentResolver: ContentResolver,
+    contentResolver: ContentResolver,
+    cacheDir: File,
 ) : InferenceEngine {
 
-    override val id: String = BACKEND_ID
-    override val displayName: String = "llama.cpp · CPU"
-    override val isDemo: Boolean = false
-
     private val lock = Mutex()
+
+    /** Serialises native lifetime with decode; never held during a load. */
+    private val nativeGuard = ReentrantLock()
+
+    private val fileAccess = ModelFileAccess(contentResolver, cacheDir)
 
     @Volatile
     private var handle: Long = 0L
@@ -53,7 +70,10 @@ class LlamaCppEngine(
     @Volatile
     private var loadedContextLength: Int = 0
 
-    private var descriptor: ParcelFileDescriptor? = null
+    @Volatile
+    private var lastErrorText: String? = null
+
+    private var openedFile: OpenedModelFile? = null
     private var backendDescription: String? = null
 
     /** Safe to call; returns false when the native library is missing for this ABI. */
@@ -71,53 +91,111 @@ class LlamaCppEngine(
         configurableContext = true,
     )
 
-    override suspend fun loadModel(model: LocalModel, config: InferenceConfig): Result<Unit> =
-        withContext(Dispatchers.IO) {
-            lock.withLock {
-                if (handle != 0L && loadedModelId == model.id) return@withLock Result.success(Unit)
+    override suspend fun loadModel(
+        model: LocalModel,
+        config: InferenceConfig,
+        onProgress: (LoadProgress) -> Unit,
+        isCancelled: () -> Boolean,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val job = currentCoroutineContext()[Job]
+        fun cancelled() = job?.isActive == false || isCancelled()
 
+        lock.withLock {
+            if (handle != 0L && loadedModelId == model.id) return@withLock Result.success(Unit)
+
+            releaseLocked()
+            lastErrorText = null
+
+            var file: OpenedModelFile? = null
+            try {
+                var opened = fileAccess.open(
+                    model = model,
+                    onProgress = { onProgress(it) },
+                    isCancelled = ::cancelled,
+                )
+                file = opened
+                opened = probeWithCacheFallback(model, opened, onProgress, ::cancelled)
+                file = opened
+
+                val newHandle = loadNative(
+                    path = opened.path,
+                    config = config,
+                    onProgress = onProgress,
+                    cancelled = ::cancelled,
+                )
+
+                handle = newHandle
+                loadedModelId = model.id
+                loadedContextLength = LlamaNative.contextSize(newHandle)
+                openedFile = opened
+                file = null
+                lastErrorText = null
+                Result.success(Unit)
+            } catch (error: Throwable) {
+                file?.close()
                 releaseLocked()
+                Result.failure(toFailure(error, cancelled()))
+            }
+        }
+    }
+
+    override suspend fun probeRuntime(model: LocalModel): Result<RuntimeProbeResult> =
+        withContext(Dispatchers.IO) {
+            val job = currentCoroutineContext()[Job]
+            fun cancelled() = job?.isActive == false
+            lock.withLock {
+                var file: OpenedModelFile? = null
                 try {
-                    val pfd = contentResolver.openFileDescriptor(Uri.parse(model.uri), "r")
-                        ?: return@withLock Result.failure(
-                            IllegalStateException(
-                                "Android could not open this document. Re-import the model to restore access.",
-                            ),
-                        )
-                    val fdPath = "/proc/self/fd/${pfd.fd}"
-                    val newHandle = LlamaNative.loadModel(
-                        fdPath = fdPath,
-                        contextLength = config.contextLength,
-                        batchSize = config.batchSize,
-                        threadCount = config.resolvedThreadCount(),
-                        gpuLayers = config.gpuLayers,
-                    )
-                    if (newHandle == 0L) {
-                        pfd.close()
-                        return@withLock Result.failure(
-                            IllegalStateException("llama.cpp returned an empty model handle."),
-                        )
-                    }
-                    handle = newHandle
-                    descriptor = pfd
-                    loadedModelId = model.id
-                    loadedContextLength = LlamaNative.contextSize(newHandle)
-                    Result.success(Unit)
-                } catch (error: Throwable) {
-                    releaseLocked()
-                    Result.failure(
-                        IllegalStateException(
-                            error.message?.takeIf { it.isNotBlank() }
-                                ?: "llama.cpp could not load this model.",
-                            error,
+                    val opened = fileAccess.open(model, isCancelled = ::cancelled)
+                    file = opened
+                    val probe = runProbe(opened.path, {}, ::cancelled)
+                    lastErrorText = null
+                    Result.success(
+                        RuntimeProbeResult(
+                            supported = true,
+                            summary = probe.summary(),
+                            detail = buildString {
+                                append("arch=").append(probe.architecture ?: "unknown")
+                                probe.parameterCount?.let { append(" · params=").append(it) }
+                                probe.trainedContextLength?.let { append(" · trained ctx=").append(it) }
+                                append(" · file=").append(opened.description)
+                            },
                         ),
                     )
+                } catch (error: Throwable) {
+                    val failure = toFailure(error, cancelled())
+                    lastErrorText = failure.message
+                    Result.failure(failure)
+                } finally {
+                    file?.close()
                 }
             }
         }
 
     override suspend fun unload() = withContext(Dispatchers.IO) {
+        val current = handle
+        if (current != 0L) runCatching { LlamaNative.cancel(current) }
         lock.withLock { releaseLocked() }
+    }
+
+    override suspend fun diagnostics(model: LocalModel): EngineDiagnostics? {
+        val backend = backendDescription ?: runCatching { LlamaNative.backendInfo() }.getOrNull()
+            ?: return null
+        val access = runCatching { fileAccess.inspect(model) }
+            .getOrElse { "Not accessible: ${it.message ?: "unknown error"}" }
+        val log = runCatching { LlamaNative.lastLog() }.getOrNull()
+        val config = "ctx ${model.contextLength} · batch ${model.batchSize} · " +
+            (if (model.threadCount > 0) "${model.threadCount} threads" else "auto threads") +
+            " · gpu layers ${model.gpuLayers}"
+        return EngineDiagnostics(
+            backendInfo = backend,
+            architecture = model.architecture,
+            quantization = model.quantizationLabel,
+            fileAccess = access,
+            loadConfig = config,
+            lastError = lastErrorText,
+            nativeLog = log?.takeIf { it.isNotBlank() },
+        )
     }
 
     override fun generate(request: InferenceRequest): Flow<InferenceEvent> {
@@ -163,27 +241,33 @@ class LlamaCppEngine(
 
             launch(Dispatchers.Default) {
                 try {
-                    if (handle != session) {
+                    val produced = nativeGuard.withLock {
+                        // The model may have been unloaded between the handle
+                        // read above and this call; fail cleanly instead of
+                        // passing a dangling pointer to native code.
+                        if (handle == 0L || handle != session) {
+                            return@withLock GENERATION_STALE
+                        }
+                        LlamaNative.generate(
+                            handle = session,
+                            roles = roles.toTypedArray(),
+                            contents = contents.toTypedArray(),
+                            maxTokens = params.maxTokens,
+                            temperature = params.temperature.toFloat(),
+                            topP = params.topP.toFloat(),
+                            topK = params.topK,
+                            repeatPenalty = params.repeatPenalty.toFloat(),
+                            callback = callback,
+                        )
+                    }
+                    if (produced == GENERATION_STALE) {
                         trySend(
                             InferenceEvent.Failed(
                                 "The model was unloaded while the response was starting.",
                                 recoverable = true,
                             ),
                         )
-                        return@launch
-                    }
-                    val produced = LlamaNative.generate(
-                        handle = session,
-                        roles = roles.toTypedArray(),
-                        contents = contents.toTypedArray(),
-                        maxTokens = params.maxTokens,
-                        temperature = params.temperature.toFloat(),
-                        topP = params.topP.toFloat(),
-                        topK = params.topK,
-                        repeatPenalty = params.repeatPenalty.toFloat(),
-                        callback = callback,
-                    )
-                    if (produced >= 0) {
+                    } else if (produced >= 0) {
                         trySend(
                             InferenceEvent.Completed(
                                 TokenUsage(
@@ -195,7 +279,9 @@ class LlamaCppEngine(
                     } else if (produced == -1) {
                         trySend(
                             InferenceEvent.Failed(
-                                "The backend stopped before finishing the response.",
+                                "The backend stopped before finishing the response. " +
+                                    (LlamaNative.lastLog().takeIf { it.isNotBlank() }
+                                        ?.let { "\n\n$it" } ?: ""),
                                 recoverable = true,
                             ),
                         )
@@ -223,16 +309,117 @@ class LlamaCppEngine(
         }.buffer(Channel.UNLIMITED)
     }
 
-    private fun releaseLocked() {
-        val current = handle
-        handle = 0L
-        loadedModelId = null
-        loadedContextLength = 0
-        if (current != 0L) {
-            runCatching { LlamaNative.freeModel(current) }
+    private fun runProbe(
+        path: String,
+        onProgress: (LoadProgress) -> Unit,
+        cancelled: () -> Boolean,
+    ): NativeProbe {
+        val info = LlamaNative.probeModel(
+            path = path,
+            progress = LlamaNative.ProgressCallback { percent ->
+                onProgress(LoadProgress(LoadPhase.PROBING, percent))
+                !cancelled()
+            },
+        )
+        if (cancelled()) throw ModelLoadCancelledException()
+        return NativeProbe.parse(info)
+    }
+
+    /**
+     * Probes [seekableFile]; when llama.cpp cannot use the descriptor even
+     * though `fstat` said it was a regular file, copies to the cache once and
+     * probes the copy instead.
+     */
+    private fun probeWithCacheFallback(
+        model: LocalModel,
+        seekableFile: OpenedModelFile,
+        onProgress: (LoadProgress) -> Unit,
+        cancelled: () -> Boolean,
+    ): OpenedModelFile {
+        try {
+            runProbe(seekableFile.path, onProgress, cancelled)
+            return seekableFile
+        } catch (error: Throwable) {
+            if (cancelled() ||
+                nativeKind() != NativeErrorKind.FILE_ACCESS ||
+                seekableFile.copiedToCache
+            ) {
+                throw error
+            }
+            seekableFile.close()
+            val cached = fileAccess.open(
+                model = model,
+                forceCache = true,
+                onProgress = onProgress,
+                isCancelled = cancelled,
+            )
+            runProbe(cached.path, onProgress, cancelled)
+            return cached
         }
-        runCatching { descriptor?.close() }
-        descriptor = null
+    }
+
+    private fun loadNative(
+        path: String,
+        config: InferenceConfig,
+        onProgress: (LoadProgress) -> Unit,
+        cancelled: () -> Boolean,
+    ): Long {
+        val newHandle = LlamaNative.loadModel(
+            path = path,
+            contextLength = config.contextLength,
+            batchSize = config.batchSize,
+            threadCount = config.resolvedThreadCount(),
+            gpuLayers = config.gpuLayers,
+            progress = LlamaNative.ProgressCallback { percent ->
+                onProgress(LoadProgress(LoadPhase.LOADING, percent))
+                !cancelled()
+            },
+        )
+        if (cancelled()) throw ModelLoadCancelledException()
+        if (newHandle == 0L) {
+            throw LlamaBackendException(
+                NativeErrorKind.UNKNOWN,
+                "llama.cpp returned an empty model handle.",
+            )
+        }
+        return newHandle
+    }
+
+    private fun nativeKind(): NativeErrorKind = runCatching {
+        NativeErrorKind.fromNative(LlamaNative.lastErrorKind())
+    }.getOrDefault(NativeErrorKind.UNKNOWN)
+
+    private fun toFailure(error: Throwable, cancelled: Boolean): Throwable {
+        if (error is ModelLoadCancelledException || cancelled) {
+            return ModelLoadCancelledException()
+        }
+        if (error is ModelAccessException) return error
+        if (error is LlamaBackendException) {
+            lastErrorText = error.message
+            return error
+        }
+        val kind = nativeKind()
+        lastErrorText = error.message
+        return LlamaBackendException(
+            kind = kind,
+            message = error.message?.takeIf { it.isNotBlank() }
+                ?: "llama.cpp could not load this model.",
+            cause = error,
+        )
+    }
+
+    private fun releaseLocked() {
+        nativeGuard.withLock {
+            val current = handle
+            handle = 0L
+            loadedModelId = null
+            loadedContextLength = 0
+            if (current != 0L) {
+                runCatching { LlamaNative.freeModel(current) }
+            }
+            openedFile?.close()
+            openedFile = null
+        }
     }
 
     val loadedContextSize: Int get() = loadedContextLength
@@ -247,12 +434,15 @@ class LlamaCppEngine(
     companion object {
         const val BACKEND_ID = "llama.cpp"
 
+        /** Marker returned by the generate block when the handle went stale. */
+        private const val GENERATION_STALE = Int.MIN_VALUE
+
         /**
          * Creates the engine only when the native library is packaged for this
          * device; callers fall back to the demo engine otherwise.
          */
-        fun createIfAvailable(contentResolver: ContentResolver): LlamaCppEngine? =
-            runCatching { LlamaCppEngine(contentResolver) }
+        fun createIfAvailable(contentResolver: ContentResolver, cacheDir: File): LlamaCppEngine? =
+            runCatching { LlamaCppEngine(contentResolver, cacheDir) }
                 .getOrNull()
                 ?.takeIf { it.probe() }
     }

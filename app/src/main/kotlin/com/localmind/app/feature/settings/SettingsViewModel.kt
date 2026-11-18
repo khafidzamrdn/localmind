@@ -102,6 +102,8 @@ class SettingsViewModel(
 
     fun setBatchSize(value: Int) = updateRuntime { it.copy(batchSize = value) }
 
+    fun setLowMemory(enabled: Boolean) = updateRuntime { it.copy(lowMemory = enabled) }
+
     fun clearAllChats() {
         viewModelScope.launch {
             conversationRepository.clearAll()
