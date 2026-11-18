@@ -69,6 +69,7 @@ fun SettingsScreen(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val models by viewModel.models.collectAsStateWithLifecycle()
     val storageBytes by viewModel.storageBytes.collectAsStateWithLifecycle()
+    val deviceMemory by viewModel.deviceMemory.collectAsStateWithLifecycle()
 
     var promptDraft by remember(settings.systemPrompt) { mutableStateOf(settings.systemPrompt) }
     var confirmClearChats by remember { mutableStateOf(false) }
@@ -133,9 +134,17 @@ fun SettingsScreen(
                         )
                         Text(
                             text = if (activeModel != null) {
-                                "Selected for new responses · loading starts in Milestone 2"
+                                if (viewModel.backendIsDemo) {
+                                    "Selected · native backend unavailable in this build"
+                                } else {
+                                    "Selected · loads on demand when you send a message"
+                                }
                             } else {
-                                "Built-in simulated backend"
+                                if (viewModel.backendIsDemo) {
+                                    "Built-in simulated backend"
+                                } else {
+                                    "No model selected · import a GGUF file"
+                                }
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = extras.mutedText,
@@ -258,8 +267,81 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "Larger windows consume more RAM. The native backend will check the estimate against " +
-                        "available memory before loading; this build does not load models.",
+                    text = "This is the app-wide default. A selected model can override it in Models → Configure; " +
+                        "the backend caps it to the context length the model was trained for.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = extras.mutedText,
+                )
+            }
+        }
+
+        item(key = "runtime-title") { ScreenSectionTitle("Runtime") }
+        item(key = "runtime") {
+            SettingsCard {
+                BackendRow(
+                    "CPU cores",
+                    "${viewModel.capabilities.cpuCores} available",
+                    MaterialTheme.colorScheme.onSurface,
+                )
+                BackendRow(
+                    "Device memory",
+                    "${formatFileSize(deviceMemory.totalBytes)} total · " +
+                        "${formatFileSize(deviceMemory.availableBytes)} free",
+                    MaterialTheme.colorScheme.onSurface,
+                )
+                if (deviceMemory.lowRamDevice) {
+                    Spacer(Modifier.height(4.dp))
+                    InfoBanner(
+                        icon = Icons.Outlined.Info,
+                        tone = extras.warning,
+                        text = "Android reports this as a low-RAM device. Prefer small quantized models " +
+                            "(Q4) and a 2k–4k context.",
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "Default generation threads",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = settings.runtime.threadCount == 0,
+                        onClick = { viewModel.setThreadCount(0) },
+                        label = { Text("Auto (${viewModel.capabilities.maxThreads.coerceIn(2, 6)})") },
+                    )
+                    (2..viewModel.capabilities.maxThreads.coerceAtMost(8)).forEach { threads ->
+                        FilterChip(
+                            selected = settings.runtime.threadCount == threads,
+                            onClick = { viewModel.setThreadCount(threads) },
+                            label = { Text("$threads") },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = "Default batch size",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(256, 512, 1024).forEach { batch ->
+                        FilterChip(
+                            selected = settings.runtime.batchSize == batch,
+                            onClick = { viewModel.setBatchSize(batch) },
+                            label = { Text("$batch") },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "Threads apply to newly imported models; existing models can be tuned in Models → " +
+                        "Configure. Leave two cores free so the UI stays responsive.",
                     style = MaterialTheme.typography.labelSmall,
                     color = extras.mutedText,
                 )
@@ -348,13 +430,35 @@ fun SettingsScreen(
         item(key = "backend-title") { ScreenSectionTitle("Backend") }
         item(key = "backend") {
             SettingsCard {
-                BackendRow("Active engine", "Demo engine", MaterialTheme.colorScheme.tertiary)
-                BackendRow("Native GGUF backend", "Not installed", extras.mutedText)
+                BackendRow(
+                    "Active engine",
+                    viewModel.backendName,
+                    if (viewModel.backendIsDemo) {
+                        MaterialTheme.colorScheme.tertiary
+                    } else {
+                        MaterialTheme.colorScheme.secondary
+                    },
+                )
+                BackendRow(
+                    "Native GGUF backend",
+                    if (viewModel.backendIsDemo) "Unavailable" else "llama.cpp · CPU",
+                    if (viewModel.backendIsDemo) extras.mutedText else MaterialTheme.colorScheme.secondary,
+                )
+                BackendRow(
+                    "GPU acceleration",
+                    if (viewModel.gpuSupported) "Supported" else "Not available (CPU build)",
+                    if (viewModel.gpuSupported) MaterialTheme.colorScheme.secondary else extras.mutedText,
+                )
                 BackendRow("Network", "Offline · no INTERNET permission", MaterialTheme.colorScheme.secondary)
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "Milestone 2 evaluates and integrates an Android-compatible llama.cpp build. The backend " +
-                        "abstraction is already in place so engines can be swapped without UI changes.",
+                    text = if (viewModel.backendIsDemo) {
+                        "The native library could not be loaded on this device/build, so LocalMind falls back " +
+                            "to the simulated engine. Imported files are never read by the demo engine."
+                    } else {
+                        "LocalMind bundles llama.cpp built for arm64 Android. Inference runs on the CPU with " +
+                            "the context, thread and batch settings above; no data leaves the device."
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = extras.mutedText,
                 )
@@ -364,7 +468,7 @@ fun SettingsScreen(
         item(key = "about-title") { ScreenSectionTitle("About") }
         item(key = "about") {
             SettingsCard {
-                AboutRow("Version", "0.1.0 · Milestone 1")
+                AboutRow("Version", "0.2.0 · Milestone 2")
                 AboutRow("Package", "com.localmind.app")
                 AboutRow("Minimum Android", "10 (API 29)")
                 AboutRow("Data", "Stored on device only")

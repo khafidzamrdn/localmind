@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.localmind.app.core.domain.model.AppSettings
 import com.localmind.app.core.domain.model.GenerationParams
+import com.localmind.app.core.domain.model.RuntimeDefaults
 import com.localmind.app.core.domain.model.ThemeMode
 import com.localmind.app.core.domain.repository.SettingsRepository
 import java.io.IOException
@@ -62,6 +63,14 @@ class SettingsRepositoryImpl(
         }
     }
 
+    override suspend fun setRuntimeDefaults(defaults: RuntimeDefaults) {
+        context.settingsDataStore.edit { prefs ->
+            prefs[Keys.THREAD_COUNT] = defaults.threadCount
+            prefs[Keys.BATCH_SIZE] = defaults.batchSize
+            prefs[Keys.GPU_ENABLED] = defaults.gpuEnabled
+        }
+    }
+
     private fun Preferences.toSettings(): AppSettings {
         val defaults = AppSettings()
         return AppSettings(
@@ -78,6 +87,11 @@ class SettingsRepositoryImpl(
                 maxTokens = this[Keys.MAX_TOKENS] ?: defaults.generation.maxTokens,
                 contextLength = this[Keys.CONTEXT_LENGTH] ?: defaults.generation.contextLength,
             ),
+            runtime = RuntimeDefaults(
+                threadCount = this[Keys.THREAD_COUNT] ?: defaults.runtime.threadCount,
+                batchSize = this[Keys.BATCH_SIZE] ?: defaults.runtime.batchSize,
+                gpuEnabled = this[Keys.GPU_ENABLED] ?: defaults.runtime.gpuEnabled,
+            ),
         )
     }
 
@@ -91,6 +105,9 @@ class SettingsRepositoryImpl(
         val REPEAT_PENALTY = floatPreferencesKey("repeat_penalty")
         val MAX_TOKENS = intPreferencesKey("max_tokens")
         val CONTEXT_LENGTH = intPreferencesKey("context_length")
+        val THREAD_COUNT = intPreferencesKey("runtime_thread_count")
+        val BATCH_SIZE = intPreferencesKey("runtime_batch_size")
+        val GPU_ENABLED = booleanPreferencesKey("runtime_gpu_enabled")
 
         @Suppress("unused")
         val RESERVED_FOR_AGENT_TOOLS = booleanPreferencesKey("agent_tools_enabled")

@@ -9,8 +9,11 @@ import com.localmind.app.core.domain.model.LocalModel
 import com.localmind.app.core.domain.model.MessageRole
 import com.localmind.app.core.domain.model.MessageStatus
 import com.localmind.app.core.inference.InferenceEngine
+import com.localmind.app.core.inference.InferenceConfig
 import com.localmind.app.core.inference.InferenceEvent
 import com.localmind.app.core.inference.InferenceRequest
+import com.localmind.app.core.inference.LocalInferenceController
+import com.localmind.app.core.inference.ModelRuntimeState
 import com.localmind.app.core.domain.repository.ConversationRepository
 import com.localmind.app.core.domain.repository.ModelRepository
 import com.localmind.app.core.domain.repository.SettingsRepository
@@ -33,6 +36,7 @@ import kotlinx.coroutines.withContext
 /** Observable agent/engine status shown in the chat header. */
 enum class ChatStatus {
     Idle,
+    LoadingModel,
     Thinking,
     Generating,
     Error,
@@ -44,6 +48,7 @@ class ChatViewModel(
     private val modelRepository: ModelRepository,
     private val settingsRepository: SettingsRepository,
     private val engine: InferenceEngine,
+    private val controller: LocalInferenceController,
 ) : ViewModel() {
 
     private val currentConversationId = MutableStateFlow<String?>(null)
@@ -86,6 +91,7 @@ class ChatViewModel(
 
     val engineDisplayName: String = engine.displayName
     val isDemoEngine: Boolean = engine.isDemo
+    val runtimeState: StateFlow<ModelRuntimeState> = controller.state
 
     private var generationJob: Job? = null
     private var streamingBuffer = StringBuilder()
@@ -234,18 +240,40 @@ class ChatViewModel(
         _streamingText.value = ""
         _error.value = null
         _isGenerating.value = true
-        _status.value = ChatStatus.Thinking
+        _status.value = ChatStatus.LoadingModel
         completedNormally = false
         streamingBuffer = StringBuilder()
 
         val config = settingsRepository.current()
         val model = config.activeModelId?.let { modelRepository.getModel(it) }
+
+        if (model == null && !engine.isDemo) {
+            _error.value = "No model is selected. Import a GGUF model in Models, then select and load it."
+            _status.value = ChatStatus.Error
+            _isGenerating.value = false
+            _streamingText.value = null
+            return
+        }
+
+        if (model != null) {
+            val loadResult = controller.ensureLoaded(model.id)
+            if (loadResult.isFailure) {
+                _error.value = loadResult.exceptionOrNull()?.message ?: "The model could not be loaded."
+                _status.value = ChatStatus.Error
+                _isGenerating.value = false
+                _streamingText.value = null
+                return
+            }
+        }
+
+        _status.value = ChatStatus.Thinking
         val history = conversationRepository.getMessages(conversationId)
         val request = InferenceRequest(
             messages = history,
             systemPrompt = config.systemPrompt,
             params = config.generation,
             model = model,
+            config = model?.let { InferenceConfig.from(it) } ?: InferenceConfig(),
         )
 
         var lastFlush = 0L

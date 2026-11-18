@@ -14,37 +14,47 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -56,7 +66,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.localmind.app.core.domain.model.LocalModel
-import com.localmind.app.core.domain.model.ModelFormat
+import com.localmind.app.core.domain.model.ModelValidation
+import com.localmind.app.core.inference.ModelRuntimeState
+import com.localmind.app.core.inference.ResourceEstimate
+import com.localmind.app.core.inference.ResourceRisk
 import com.localmind.app.core.ui.components.ConfirmDialog
 import com.localmind.app.core.ui.components.EmptyState
 import com.localmind.app.core.ui.components.InfoBanner
@@ -75,10 +88,14 @@ fun ModelsScreen(
     val models by viewModel.models.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val isImporting by viewModel.isImporting.collectAsStateWithLifecycle()
+    val validatingIds by viewModel.validatingModelIds.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
+    val runtimeState by viewModel.runtimeState.collectAsStateWithLifecycle()
+    val loadRequest by viewModel.loadRequest.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
     var detailsModel by remember { mutableStateOf<LocalModel?>(null) }
+    var configureModel by remember { mutableStateOf<LocalModel?>(null) }
     var removeTarget by remember { mutableStateOf<LocalModel?>(null) }
 
     val importLauncher = rememberLauncherForActivityResult(
@@ -105,7 +122,7 @@ fun ModelsScreen(
         ) {
             ScreenHeader(
                 title = "Models",
-                subtitle = "Local GGUF library",
+                subtitle = "Local GGUF library · ${viewModel.backendName}",
                 actions = {
                     FilledTonalButton(
                         onClick = { importLauncher.launch(arrayOf("*/*")) },
@@ -124,7 +141,7 @@ fun ModelsScreen(
                             )
                         }
                         Spacer(Modifier.width(6.dp))
-                        Text(if (isImporting) "Importing" else "Import")
+                        Text(if (isImporting) "Checking" else "Import")
                     }
                 },
             )
@@ -139,12 +156,22 @@ fun ModelsScreen(
                         InfoBanner(
                             icon = Icons.Outlined.Info,
                             text = "Model files are opened through Android's document picker and are not copied. " +
-                                "Removing a model from this library never deletes the original file.",
+                                "Imports are validated by reading the GGUF header only; weights are read at load time. " +
+                                "Removing a model never deletes the original file.",
                         )
+                        if (viewModel.backendIsDemo) {
+                            InfoBanner(
+                                icon = Icons.Outlined.Info,
+                                tone = MaterialTheme.colorScheme.tertiary,
+                                text = "Native llama.cpp is not loadable on this device/build, so the chat uses the " +
+                                    "demo engine. Files can still be imported and validated, but Load is disabled.",
+                            )
+                        }
                         if (models.isNotEmpty()) {
                             LibrarySummary(
                                 models = models,
                                 activeModelId = settings.activeModelId,
+                                runtimeState = runtimeState,
                             )
                         }
                     }
@@ -178,11 +205,24 @@ fun ModelsScreen(
                         ScreenSectionTitle("Library", modifier = Modifier.fillMaxWidth())
                     }
                     items(models, key = { it.id }) { model ->
+                        val loaded = (runtimeState as? ModelRuntimeState.Loaded)?.modelId == model.id
+                        val loading = (runtimeState as? ModelRuntimeState.Loading)?.modelId == model.id
+                        val failure = (runtimeState as? ModelRuntimeState.Failed)
+                            ?.takeIf { it.modelId == model.id }
                         ModelCard(
                             model = model,
                             isDefault = model.id == settings.activeModelId,
+                            loaded = loaded,
+                            loading = loading,
+                            validating = model.id in validatingIds,
+                            failureMessage = failure?.message,
+                            loadEnabled = !viewModel.backendIsDemo,
+                            onLoad = { viewModel.requestLoad(model.id) },
+                            onUnload = viewModel::unload,
                             onSetDefault = { viewModel.setDefaultModel(model.id) },
                             onClearDefault = viewModel::clearDefaultModel,
+                            onRevalidate = { viewModel.revalidate(model.id) },
+                            onConfigure = { configureModel = model },
                             onDetails = { detailsModel = model },
                             onRemove = { removeTarget = model },
                         )
@@ -196,7 +236,35 @@ fun ModelsScreen(
     }
 
     detailsModel?.let { model ->
-        ModelDetailsDialog(model = model, onDismiss = { detailsModel = null })
+        ModelDetailsDialog(
+            model = model,
+            onRevalidate = {
+                viewModel.revalidate(model.id)
+                detailsModel = null
+            },
+            onDismiss = { detailsModel = null },
+        )
+    }
+
+    configureModel?.let { model ->
+        ConfigureModelDialog(
+            model = model,
+            maxThreads = viewModel.maxThreads,
+            gpuSupported = viewModel.gpuSupported,
+            onSave = { contextLength, threads, batch, gpu ->
+                viewModel.configure(model.id, contextLength, threads, batch, gpu)
+                configureModel = null
+            },
+            onDismiss = { configureModel = null },
+        )
+    }
+
+    loadRequest?.let { request ->
+        LoadConfirmationDialog(
+            request = request,
+            onConfirm = viewModel::confirmLoad,
+            onDismiss = viewModel::dismissLoadRequest,
+        )
     }
 
     removeTarget?.let { model ->
@@ -213,9 +281,14 @@ fun ModelsScreen(
 }
 
 @Composable
-private fun LibrarySummary(models: List<LocalModel>, activeModelId: String?) {
+private fun LibrarySummary(
+    models: List<LocalModel>,
+    activeModelId: String?,
+    runtimeState: ModelRuntimeState,
+) {
     val extras = LocalMindExtras.current
     val active = models.firstOrNull { it.id == activeModelId }
+    val loaded = runtimeState as? ModelRuntimeState.Loaded
     val totalBytes = models.sumOf { it.sizeBytes }
     Row(
         modifier = Modifier
@@ -230,9 +303,13 @@ private fun LibrarySummary(models: List<LocalModel>, activeModelId: String?) {
             modifier = Modifier.weight(1f),
         )
         Text(
-            text = active?.displayName?.let { "Default: $it" } ?: "Default: demo engine",
+            text = when {
+                loaded != null -> "Loaded: ${models.firstOrNull { it.id == loaded.modelId }?.displayName ?: "model"}"
+                active != null -> "Selected: ${active.displayName}"
+                else -> "No model selected"
+            },
             style = MaterialTheme.typography.labelSmall,
-            color = if (active != null) MaterialTheme.colorScheme.primary else extras.mutedText,
+            color = if (loaded != null) MaterialTheme.colorScheme.secondary else extras.mutedText,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -243,8 +320,17 @@ private fun LibrarySummary(models: List<LocalModel>, activeModelId: String?) {
 private fun ModelCard(
     model: LocalModel,
     isDefault: Boolean,
+    loaded: Boolean,
+    loading: Boolean,
+    validating: Boolean,
+    failureMessage: String?,
+    loadEnabled: Boolean,
+    onLoad: () -> Unit,
+    onUnload: () -> Unit,
     onSetDefault: () -> Unit,
     onClearDefault: () -> Unit,
+    onRevalidate: () -> Unit,
+    onConfigure: () -> Unit,
     onDetails: () -> Unit,
     onRemove: () -> Unit,
 ) {
@@ -270,7 +356,11 @@ private fun ModelCard(
                     Icon(
                         imageVector = Icons.Outlined.Memory,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
+                        tint = when (model.validation) {
+                            ModelValidation.VALID -> MaterialTheme.colorScheme.primary
+                            ModelValidation.UNVERIFIED -> MaterialTheme.colorScheme.tertiary
+                            else -> MaterialTheme.colorScheme.error
+                        },
                         modifier = Modifier.size(17.dp),
                     )
                 }
@@ -285,10 +375,28 @@ private fun ModelCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Spacer(Modifier.height(5.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        modifier = Modifier.horizontalScrollableRow(),
+                    ) {
                         MetaChip(model.format.name)
-                        model.quantization?.let { MetaChip(it) }
+                        model.quantizationLabel?.let { MetaChip(it) }
                         MetaChip(if (model.sizeBytes > 0) formatFileSize(model.sizeBytes) else "size unknown")
+                        model.parameterCount?.let { MetaChip(formatParameterCount(it)) }
+                    }
+                    if (model.architecture != null) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = buildString {
+                                append(model.architecture)
+                                model.trainedContextLength?.let { append(" · $it ctx trained") }
+                                model.blockCount?.let { append(" · $it layers") }
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = extras.mutedText,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
                 Box {
@@ -302,7 +410,7 @@ private fun ModelCard(
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
-                            text = { Text("Set as default") },
+                            text = { Text("Set as selected model") },
                             enabled = model.isUsable && !isDefault,
                             leadingIcon = { Icon(Icons.Outlined.Star, contentDescription = null) },
                             onClick = {
@@ -312,13 +420,30 @@ private fun ModelCard(
                         )
                         if (isDefault) {
                             DropdownMenuItem(
-                                text = { Text("Use demo engine instead") },
+                                text = { Text("Clear selected model") },
                                 onClick = {
                                     menuOpen = false
                                     onClearDefault()
                                 },
                             )
                         }
+                        DropdownMenuItem(
+                            text = { Text("Configure inference") },
+                            leadingIcon = { Icon(Icons.Outlined.Tune, contentDescription = null) },
+                            onClick = {
+                                menuOpen = false
+                                onConfigure()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(if (validating) "Validating…" else "Re-validate GGUF") },
+                            enabled = !validating,
+                            leadingIcon = { Icon(Icons.Outlined.Refresh, contentDescription = null) },
+                            onClick = {
+                                menuOpen = false
+                                onRevalidate()
+                            },
+                        )
                         DropdownMenuItem(
                             text = { Text("File details") },
                             onClick = {
@@ -343,25 +468,93 @@ private fun ModelCard(
                     }
                 }
             }
+
             Row(
-                modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 12.dp, top = 2.dp),
+                modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 4.dp, top = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                if (model.isUsable) {
-                    StatusPill("In library", MaterialTheme.colorScheme.secondary)
-                } else {
-                    StatusPill("Unsupported", MaterialTheme.colorScheme.error)
+                when (model.validation) {
+                    ModelValidation.VALID -> StatusPill("Verified", MaterialTheme.colorScheme.secondary)
+                    ModelValidation.UNVERIFIED -> StatusPill("Unverified", MaterialTheme.colorScheme.tertiary)
+                    ModelValidation.INVALID -> StatusPill("Invalid", MaterialTheme.colorScheme.error)
+                    ModelValidation.MISSING -> StatusPill("Missing", MaterialTheme.colorScheme.error)
                 }
                 if (isDefault) {
-                    StatusPill("Default", MaterialTheme.colorScheme.primary)
+                    StatusPill("Selected", MaterialTheme.colorScheme.primary)
+                }
+                if (loaded) {
+                    StatusPill("Loaded", MaterialTheme.colorScheme.secondary)
                 }
                 Spacer(Modifier.weight(1f))
                 Text(
-                    text = "Not loaded",
+                    text = when {
+                        loading || validating -> "Working…"
+                        loaded -> "In memory"
+                        else -> "Not loaded"
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = extras.mutedText,
                 )
+            }
+
+            val validationMessage = model.validationMessage
+            if (validationMessage != null) {
+                Text(
+                    text = validationMessage,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+                )
+            }
+            if (failureMessage != null) {
+                Text(
+                    text = failureMessage,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 14.dp, end = 14.dp, bottom = 12.dp, top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = "${model.contextLength} ctx · " +
+                        (if (model.threadCount == 0) "auto threads" else "${model.threadCount} threads") +
+                        " · batch ${model.batchSize}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = extras.mutedText,
+                    modifier = Modifier.weight(1f),
+                )
+                when {
+                    loading -> OutlinedButton(onClick = {}, enabled = false) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Loading")
+                    }
+
+                    loaded -> OutlinedButton(onClick = onUnload) { Text("Unload") }
+
+                    model.validation != ModelValidation.VALID -> OutlinedButton(
+                        onClick = onRevalidate,
+                        enabled = !validating,
+                    ) { Text(if (validating) "Checking…" else "Check file") }
+
+                    else -> FilledTonalButton(
+                        onClick = onLoad,
+                        enabled = loadEnabled,
+                    ) {
+                        Text(if (loadEnabled) "Load" else "Backend off")
+                    }
+                }
             }
         }
     }
@@ -372,23 +565,273 @@ private fun MilestoneNote() {
     InfoBanner(
         icon = Icons.Outlined.Info,
         tone = MaterialTheme.colorScheme.tertiary,
-        text = "Loading, resource estimation and GGUF inference arrive in Milestone 2 with a native backend. " +
-            "Chat currently runs the demo engine, so selecting a default model does not load it yet.",
+        text = "Load reads the GGUF weights through the persisted document URI and keeps them in RAM until you " +
+            "unload or switch models. Android may stop the app if free memory runs out, so large models show a " +
+            "warning first.",
         modifier = Modifier.padding(top = 6.dp),
     )
 }
 
 @Composable
-private fun ModelDetailsDialog(model: LocalModel, onDismiss: () -> Unit) {
+private fun LoadConfirmationDialog(
+    request: LoadRequest,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val estimate = request.estimate
+    val riskColor = when (estimate.risk) {
+        ResourceRisk.COMFORTABLE -> MaterialTheme.colorScheme.secondary
+        ResourceRisk.TIGHT -> LocalMindExtras.current.warning
+        ResourceRisk.RISKY -> MaterialTheme.colorScheme.error
+    }
+    val riskLabel = when (estimate.risk) {
+        ResourceRisk.COMFORTABLE -> "Comfortable"
+        ResourceRisk.TIGHT -> "Tight fit"
+        ResourceRisk.RISKY -> "Likely to fail"
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Load ${request.model.displayName}?", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatusPill(riskLabel, riskColor)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = estimate.summary,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = LocalMindExtras.current.mutedText,
+                    )
+                }
+                EstimateRow("Model weights", estimate.modelBytes)
+                EstimateRow("KV cache", estimate.kvCacheBytes)
+                EstimateRow("Compute buffers", estimate.computeOverheadBytes)
+                EstimateRow("Estimated total", estimate.totalBytes, bold = true)
+                Spacer(Modifier.height(2.dp))
+                estimate.notes.forEach { note ->
+                    Text(
+                        text = "• $note",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (estimate.risk != ResourceRisk.COMFORTABLE) {
+                    Text(
+                        text = "Loading anyway may make Android kill the app or the backend may fail with an " +
+                            "out-of-memory error. Unload other apps and prefer a smaller quantization/context.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = riskColor,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(
+                    text = if (estimate.risk == ResourceRisk.RISKY) "Load anyway" else "Load",
+                    color = if (estimate.risk == ResourceRisk.RISKY) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
+}
+
+@Composable
+private fun EstimateRow(label: String, bytes: Long, bold: Boolean = false) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = LocalMindExtras.current.mutedText,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = formatFileSize(bytes),
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Normal,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun ConfigureModelDialog(
+    model: LocalModel,
+    maxThreads: Int,
+    gpuSupported: Boolean,
+    onSave: (contextLength: Int, threadCount: Int, batchSize: Int, gpuLayers: Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val trained = model.trainedContextLength?.takeIf { it > 0 }
+    val contextOptions = remember(model.id, trained) {
+        val base = listOf(1024, 2048, 4096, 8192, 16384, 32768)
+        val capped = trained?.let { cap -> base.filter { it <= cap } } ?: base
+        (capped + listOfNotNull(trained, model.contextLength))
+            .distinct()
+            .sorted()
+            .ifEmpty { listOf(1024, 2048) }
+    }
+    var contextLength by remember(model.id) {
+        mutableIntStateOf(model.contextLength.coerceAtLeast(512))
+    }
+    var threadCount by remember(model.id) { mutableIntStateOf(model.threadCount) }
+    var batchSize by remember(model.id) { mutableIntStateOf(model.batchSize) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Inference configuration", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = model.displayName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LocalMindExtras.current.mutedText,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = "Context length",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    contextOptions.chunked(3).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            row.forEach { option ->
+                                FilterChip(
+                                    selected = contextLength == option,
+                                    onClick = { contextLength = option },
+                                    label = { Text(if (option >= 1024) "${option / 1024}k" else "$option") },
+                                )
+                            }
+                        }
+                    }
+                }
+                if (trained != null) {
+                    Text(
+                        text = "Trained context: $trained tokens. Larger values are not offered.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = LocalMindExtras.current.mutedText,
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Threads",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Row(
+                    modifier = Modifier.horizontalScrollableRow(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    FilterChip(
+                        selected = threadCount == 0,
+                        onClick = { threadCount = 0 },
+                        label = { Text("Auto") },
+                    )
+                    (2..maxThreads.coerceAtMost(8)).forEach { value ->
+                        FilterChip(
+                            selected = threadCount == value,
+                            onClick = { threadCount = value },
+                            label = { Text("$value") },
+                        )
+                    }
+                }
+                Text(
+                    text = "Auto leaves two cores for the UI and never uses more than six.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = LocalMindExtras.current.mutedText,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Batch size",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(256, 512, 1024).forEach { value ->
+                        FilterChip(
+                            selected = batchSize == value,
+                            onClick = { batchSize = value },
+                            label = { Text("$value") },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "GPU acceleration",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = if (gpuSupported) {
+                                "Offload layers to a compatible GPU backend"
+                            } else {
+                                "Unavailable: this build uses a CPU-only llama.cpp backend"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = LocalMindExtras.current.mutedText,
+                        )
+                    }
+                    Switch(checked = false, onCheckedChange = null, enabled = false)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onSave(contextLength, threadCount, batchSize, 0)
+            }) { Text("Save", fontWeight = FontWeight.SemiBold) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    )
+}
+
+@Composable
+private fun ModelDetailsDialog(
+    model: LocalModel,
+    onRevalidate: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(model.displayName, style = MaterialTheme.typography.titleMedium) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                DetailRow("Format", model.format.name)
-                DetailRow("Quantization", model.quantization ?: "not detected")
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                DetailRow("Validation", model.validation.name.lowercase())
+                DetailRow("Architecture", model.architecture ?: "not reported")
+                DetailRow("Parameters", model.parameterCount?.let { formatParameterCount(it) } ?: "unknown")
+                DetailRow("Tensor quantization", model.quantizationLabel ?: "not detected")
+                DetailRow("Trained context", model.trainedContextLength?.let { "$it tokens" } ?: "unknown")
+                DetailRow("Layers", model.blockCount?.toString() ?: "unknown")
+                DetailRow("Embedding", model.embeddingLength?.toString() ?: "unknown")
+                DetailRow("Attention heads", model.headCount?.toString() ?: "unknown")
+                DetailRow("KV heads", model.headCountKv?.toString() ?: "unknown")
+                DetailRow("Chat template", if (model.chatTemplate != null) "embedded" else "fallback formatting")
                 DetailRow("Size", if (model.sizeBytes > 0) formatFileSize(model.sizeBytes) else "unknown")
-                DetailRow("State", "not loaded")
+                DetailRow("Runtime", "${model.contextLength} ctx · " +
+                    (if (model.threadCount == 0) "auto threads" else "${model.threadCount} threads") +
+                    " · batch ${model.batchSize}")
+                model.validationMessage?.let { message ->
+                    DetailRow("Issue", message)
+                }
+                Spacer(Modifier.height(4.dp))
                 Text(
                     text = "Document URI",
                     style = MaterialTheme.typography.labelSmall,
@@ -399,16 +842,12 @@ private fun ModelDetailsDialog(model: LocalModel, onDismiss: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (!model.isUsable) {
-                    Text(
-                        text = "Only .gguf files can be used by the planned backend.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
             }
         },
         confirmButton = {
+            TextButton(onClick = onRevalidate) { Text("Re-validate") }
+        },
+        dismissButton = {
             TextButton(onClick = onDismiss) { Text("Close") }
         },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -422,12 +861,23 @@ private fun DetailRow(label: String, value: String) {
             text = label,
             style = MaterialTheme.typography.bodySmall,
             color = LocalMindExtras.current.mutedText,
-            modifier = Modifier.width(110.dp),
+            modifier = Modifier.width(128.dp),
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
         )
     }
+}
+
+@Composable
+private fun Modifier.horizontalScrollableRow(): Modifier =
+    this.then(Modifier.horizontalScroll(rememberScrollState()))
+
+private fun formatParameterCount(count: Long): String = when {
+    count >= 1_000_000_000L -> String.format(java.util.Locale.US, "%.1fB", count / 1_000_000_000.0)
+    count >= 1_000_000L -> String.format(java.util.Locale.US, "%.0fM", count / 1_000_000.0)
+    else -> count.toString()
 }

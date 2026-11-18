@@ -28,7 +28,7 @@ class LocalModelTest {
     }
 
     @Test
-    fun `only gguf models are usable`() {
+    fun `only verified gguf models are usable`() {
         val base = LocalModel(
             id = "1",
             displayName = "m.gguf",
@@ -38,8 +38,28 @@ class LocalModelTest {
             format = ModelFormat.GGUF,
             quantization = "Q4_K_M",
         )
-        assertTrue(base.isUsable)
+        assertFalse(base.isUsable)
+        assertTrue(base.copy(validation = ModelValidation.VALID).isUsable)
         assertTrue(base.isQuantized)
-        assertFalse(base.copy(format = ModelFormat.UNKNOWN).isUsable)
+        assertFalse(base.copy(format = ModelFormat.UNKNOWN, validation = ModelValidation.VALID).isUsable)
+        assertFalse(base.copy(validation = ModelValidation.INVALID).isUsable)
+    }
+
+    @Test
+    fun `usable model must expose gguf validation state`() {
+        val model = LocalModel(
+            id = "2",
+            displayName = "q.gguf",
+            uri = "content://q",
+            sizeBytes = 1,
+            importedAt = 0,
+            format = ModelFormat.GGUF,
+            quantization = null,
+            validation = ModelValidation.VALID,
+            ggufQuantization = "Q5_K",
+        )
+        assertTrue(model.isUsable)
+        assertTrue(model.isQuantized)
+        assertEquals("Q5_K", model.quantizationLabel)
     }
 }

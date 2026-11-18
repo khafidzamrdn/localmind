@@ -86,6 +86,25 @@ interface ModelDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(model: ModelEntity)
 
+    @Query("UPDATE models SET loadState = :state, backendId = :backendId WHERE id = :id")
+    suspend fun updateLoadState(id: String, state: String, backendId: String?)
+
+    @Query(
+        """
+        UPDATE models
+        SET contextLength = :contextLength, threadCount = :threadCount,
+            batchSize = :batchSize, gpuLayers = :gpuLayers
+        WHERE id = :id
+        """,
+    )
+    suspend fun updateConfig(
+        id: String,
+        contextLength: Int,
+        threadCount: Int,
+        batchSize: Int,
+        gpuLayers: Int,
+    )
+
     @Query("DELETE FROM models WHERE id = :id")
     suspend fun delete(id: String)
 }

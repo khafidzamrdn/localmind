@@ -110,17 +110,19 @@ fun ChatScreen(
     }
     val statusLabel = when (status) {
         ChatStatus.Idle -> "Ready"
+        ChatStatus.LoadingModel -> "Loading model…"
         ChatStatus.Thinking -> "Thinking…"
         ChatStatus.Generating -> "Generating…"
         ChatStatus.Error -> "Error"
     }
     val statusColor = when (status) {
         ChatStatus.Idle -> MaterialTheme.colorScheme.secondary
+        ChatStatus.LoadingModel -> MaterialTheme.colorScheme.tertiary
         ChatStatus.Thinking, ChatStatus.Generating -> MaterialTheme.colorScheme.primary
         ChatStatus.Error -> MaterialTheme.colorScheme.error
     }
 
-    val contextLength = settings.generation.contextLength
+    val contextLength = activeModel?.contextLength?.takeIf { it > 0 } ?: settings.generation.contextLength
     val contextUsed = remember(messages, streamingText, settings.systemPrompt) {
         val history = messages.sumOf { if (it.content.isBlank()) 0 else estimateTokens(it.content) }
         val streaming = streamingText?.takeIf { it.isNotBlank() }?.let { estimateTokens(it) } ?: 0

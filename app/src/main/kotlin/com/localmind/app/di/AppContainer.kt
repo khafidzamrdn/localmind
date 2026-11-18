@@ -8,8 +8,11 @@ import com.localmind.app.core.data.settings.SettingsRepositoryImpl
 import com.localmind.app.core.domain.repository.ConversationRepository
 import com.localmind.app.core.domain.repository.ModelRepository
 import com.localmind.app.core.domain.repository.SettingsRepository
+import com.localmind.app.core.gguf.GgufModelValidator
 import com.localmind.app.core.inference.FakeInferenceEngine
 import com.localmind.app.core.inference.InferenceEngine
+import com.localmind.app.core.inference.LocalInferenceController
+import com.localmind.app.core.inference.ResourceEstimator
 
 /**
  * Manual dependency container. Kept deliberately small and explicit so the
@@ -37,11 +40,26 @@ class AppContainer(context: Context) {
         SettingsRepositoryImpl(appContext)
     }
 
+    val ggufValidator: GgufModelValidator by lazy {
+        GgufModelValidator(appContext.contentResolver)
+    }
+
+    val resourceEstimator: ResourceEstimator by lazy { ResourceEstimator(appContext) }
+
     /**
-     * Milestone 1 uses a simulated backend. Replacing this single binding with
-     * a llama.cpp engine is the intended Milestone 2 integration point.
+     * The native llama.cpp backend is added in Milestone 2. Until its shared
+     * library is packaged and loadable on the device this binding stays on the
+     * clearly labeled demo engine.
      */
     val inferenceEngine: InferenceEngine by lazy { FakeInferenceEngine() }
+
+    val inferenceController: LocalInferenceController by lazy {
+        LocalInferenceController(
+            engine = inferenceEngine,
+            modelRepository = modelRepository,
+            settingsRepository = settingsRepository,
+        )
+    }
 
     val databaseFile: java.io.File get() = appContext.getDatabasePath(LocalMindDatabase.DATABASE_NAME)
 }

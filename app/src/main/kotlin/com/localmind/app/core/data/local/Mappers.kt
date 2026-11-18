@@ -7,6 +7,7 @@ import com.localmind.app.core.domain.model.MessageRole
 import com.localmind.app.core.domain.model.MessageStatus
 import com.localmind.app.core.domain.model.ModelFormat
 import com.localmind.app.core.domain.model.ModelLoadState
+import com.localmind.app.core.domain.model.ModelValidation
 
 fun ConversationEntity.toDomain() = Conversation(
     id = id,
@@ -60,6 +61,21 @@ fun ModelEntity.toDomain() = LocalModel(
     quantization = quantization,
     loadState = runCatching { ModelLoadState.valueOf(loadState) }.getOrDefault(ModelLoadState.NOT_LOADED),
     backendId = backendId,
+    validation = runCatching { ModelValidation.valueOf(validation) }.getOrDefault(ModelValidation.UNVERIFIED),
+    validationMessage = validationMessage,
+    architecture = architecture,
+    parameterCount = parameterCount,
+    ggufQuantization = ggufQuantization,
+    trainedContextLength = trainedContextLength,
+    blockCount = blockCount,
+    embeddingLength = embeddingLength,
+    headCount = headCount,
+    headCountKv = headCountKv,
+    chatTemplate = chatTemplate,
+    contextLength = contextLength,
+    threadCount = threadCount,
+    batchSize = batchSize,
+    gpuLayers = gpuLayers,
 )
 
 fun LocalModel.toEntity() = ModelEntity(
@@ -72,4 +88,19 @@ fun LocalModel.toEntity() = ModelEntity(
     quantization = quantization,
     loadState = loadState.name,
     backendId = backendId,
+    validation = validation.name,
+    validationMessage = validationMessage,
+    architecture = architecture,
+    parameterCount = parameterCount,
+    ggufQuantization = ggufQuantization,
+    trainedContextLength = trainedContextLength,
+    blockCount = blockCount,
+    embeddingLength = embeddingLength,
+    headCount = headCount,
+    headCountKv = headCountKv,
+    chatTemplate = chatTemplate,
+    contextLength = contextLength,
+    threadCount = threadCount,
+    batchSize = batchSize,
+    gpuLayers = gpuLayers,
 )

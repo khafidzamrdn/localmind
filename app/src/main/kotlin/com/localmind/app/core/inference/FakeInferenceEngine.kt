@@ -32,7 +32,7 @@ class FakeInferenceEngine : InferenceEngine {
         configurableContext = false,
     )
 
-    override suspend fun loadModel(model: LocalModel): Result<Unit> {
+    override suspend fun loadModel(model: LocalModel, config: InferenceConfig): Result<Unit> {
         if (model.format != ModelFormat.GGUF) {
             return Result.failure(IllegalArgumentException("Unsupported model format: ${model.displayName}"))
         }

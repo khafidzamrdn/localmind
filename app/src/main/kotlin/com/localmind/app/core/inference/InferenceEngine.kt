@@ -21,8 +21,12 @@ interface InferenceEngine {
 
     fun capabilities(): EngineCapabilities
 
-    /** Loads [model] into memory. Safe to call with the same model twice. */
-    suspend fun loadModel(model: LocalModel): Result<Unit>
+    /**
+     * Loads [model] into memory using [config]. Implementations must validate
+     * that they can actually run the file and return a failure with an
+     * actionable message otherwise. Safe to call with the same model twice.
+     */
+    suspend fun loadModel(model: LocalModel, config: InferenceConfig): Result<Unit>
 
     /** Releases backend resources. Must be idempotent. */
     suspend fun unload()
@@ -48,6 +52,7 @@ data class InferenceRequest(
     val systemPrompt: String,
     val params: GenerationParams,
     val model: LocalModel?,
+    val config: InferenceConfig = InferenceConfig(),
 )
 
 data class TokenUsage(

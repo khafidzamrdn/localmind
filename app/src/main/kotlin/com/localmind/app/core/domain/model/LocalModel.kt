@@ -6,7 +6,19 @@ enum class ModelFormat {
     UNKNOWN,
 }
 
-/** Persisted load state of a model. Milestone 1 only produces NOT_LOADED. */
+/**
+ * Result of reading the GGUF header. [UNVERIFIED] means the file was registered
+ * but its contents have not been inspected yet (for example rows migrated from
+ * Milestone 1). Only [VALID] files may be loaded.
+ */
+enum class ModelValidation {
+    UNVERIFIED,
+    VALID,
+    INVALID,
+    MISSING,
+}
+
+/** Persisted load state of a model. Runtime state is authoritative in memory. */
 enum class ModelLoadState {
     NOT_LOADED,
     LOADING,
@@ -16,7 +28,8 @@ enum class ModelLoadState {
 
 /**
  * Metadata about a model the user imported. The file itself stays wherever the
- * user picked it; only the SAF URI and metadata are stored by LocalMind.
+ * user picked it; only the SAF URI, metadata and per-model inference settings
+ * are stored by LocalMind.
  */
 data class LocalModel(
     val id: String,
@@ -28,9 +41,37 @@ data class LocalModel(
     val quantization: String?,
     val loadState: ModelLoadState = ModelLoadState.NOT_LOADED,
     val backendId: String? = null,
+    val validation: ModelValidation = ModelValidation.UNVERIFIED,
+    val validationMessage: String? = null,
+    val architecture: String? = null,
+    val parameterCount: Long? = null,
+    val ggufQuantization: String? = null,
+    val trainedContextLength: Int? = null,
+    val blockCount: Int? = null,
+    val embeddingLength: Int? = null,
+    val headCount: Int? = null,
+    val headCountKv: Int? = null,
+    val chatTemplate: String? = null,
+    val contextLength: Int = DEFAULT_CONTEXT_LENGTH,
+    val threadCount: Int = 0,
+    val batchSize: Int = DEFAULT_BATCH_SIZE,
+    val gpuLayers: Int = 0,
 ) {
-    val isUsable: Boolean get() = format == ModelFormat.GGUF
-    val isQuantized: Boolean get() = quantization != null
+    /** True only for files whose GGUF header was read successfully. */
+    val isUsable: Boolean get() = format == ModelFormat.GGUF && validation == ModelValidation.VALID
+    val isQuantized: Boolean get() = (ggufQuantization ?: quantization) != null
+
+    /** Quantization from the GGUF tensor types, falling back to the file name. */
+    val quantizationLabel: String? get() = ggufQuantization ?: quantization
+
+    val attentionLayerCount: Int? get() = blockCount
+    val attentionHeadCount: Int? get() = headCount
+    val attentionHeadCountKv: Int? get() = headCountKv
+
+    companion object {
+        const val DEFAULT_CONTEXT_LENGTH = 4096
+        const val DEFAULT_BATCH_SIZE = 512
+    }
 }
 
 /**

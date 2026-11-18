@@ -5,10 +5,15 @@ import androidx.lifecycle.viewModelScope
 import com.localmind.app.core.domain.model.AppSettings
 import com.localmind.app.core.domain.model.GenerationParams
 import com.localmind.app.core.domain.model.LocalModel
+import com.localmind.app.core.domain.model.RuntimeDefaults
 import com.localmind.app.core.domain.model.ThemeMode
 import com.localmind.app.core.domain.repository.ConversationRepository
 import com.localmind.app.core.domain.repository.ModelRepository
 import com.localmind.app.core.domain.repository.SettingsRepository
+import com.localmind.app.core.inference.DeviceCapabilities
+import com.localmind.app.core.inference.DeviceMemory
+import com.localmind.app.core.inference.LocalInferenceController
+import com.localmind.app.core.inference.ResourceEstimator
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +29,8 @@ class SettingsViewModel(
     private val conversationRepository: ConversationRepository,
     modelRepository: ModelRepository,
     private val databaseFile: File,
+    private val resourceEstimator: ResourceEstimator,
+    private val controller: LocalInferenceController,
 ) : ViewModel() {
 
     val settings: StateFlow<AppSettings> = settingsRepository.settings
@@ -35,11 +42,29 @@ class SettingsViewModel(
     private val _storageBytes = MutableStateFlow(0L)
     val storageBytes: StateFlow<Long> = _storageBytes.asStateFlow()
 
+    private val _deviceMemory = MutableStateFlow(resourceEstimator.deviceMemory())
+    val deviceMemory: StateFlow<DeviceMemory> = _deviceMemory.asStateFlow()
+
+    val backendName: String = controller.backendName
+    val backendIsDemo: Boolean = controller.isDemo
+    val gpuSupported: Boolean = controller.capabilities().gpuAcceleration
+
+    val capabilities: DeviceCapabilities = DeviceCapabilities(
+        cpuCores = Runtime.getRuntime().availableProcessors(),
+        totalMemoryBytes = _deviceMemory.value.totalBytes,
+        availableMemoryBytes = _deviceMemory.value.availableBytes,
+        lowRamDevice = _deviceMemory.value.lowRamDevice,
+        gpuAcceleration = gpuSupported,
+        backendName = backendName,
+        backendIsDemo = backendIsDemo,
+    )
+
     init {
         refreshStorage()
     }
 
     fun refreshStorage() {
+        _deviceMemory.value = resourceEstimator.deviceMemory()
         viewModelScope.launch {
             _storageBytes.value = withContext(Dispatchers.IO) {
                 listOf(databaseFile, File("${databaseFile.path}-wal"), File("${databaseFile.path}-shm"))
@@ -73,6 +98,10 @@ class SettingsViewModel(
 
     fun setContextLength(value: Int) = updateGeneration { it.copy(contextLength = value) }
 
+    fun setThreadCount(value: Int) = updateRuntime { it.copy(threadCount = value) }
+
+    fun setBatchSize(value: Int) = updateRuntime { it.copy(batchSize = value) }
+
     fun clearAllChats() {
         viewModelScope.launch {
             conversationRepository.clearAll()
@@ -84,6 +113,13 @@ class SettingsViewModel(
         viewModelScope.launch {
             val current = settingsRepository.current()
             settingsRepository.setGenerationParams(block(current.generation))
+        }
+    }
+
+    private fun updateRuntime(block: (RuntimeDefaults) -> RuntimeDefaults) {
+        viewModelScope.launch {
+            val current = settingsRepository.current()
+            settingsRepository.setRuntimeDefaults(block(current.runtime))
         }
     }
 }

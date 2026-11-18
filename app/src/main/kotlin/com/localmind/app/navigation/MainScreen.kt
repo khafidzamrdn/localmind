@@ -96,6 +96,7 @@ fun MainScreen() {
                                 modelRepository = app.container.modelRepository,
                                 settingsRepository = app.container.settingsRepository,
                                 engine = app.container.inferenceEngine,
+                                controller = app.container.inferenceController,
                             )
                         }
                     }
@@ -119,6 +120,9 @@ fun MainScreen() {
                                 modelRepository = app.container.modelRepository,
                                 settingsRepository = app.container.settingsRepository,
                                 contentResolver = app.contentResolver,
+                                validator = app.container.ggufValidator,
+                                estimator = app.container.resourceEstimator,
+                                controller = app.container.inferenceController,
                             )
                         }
                     }
@@ -136,6 +140,8 @@ fun MainScreen() {
                                 conversationRepository = app.container.conversationRepository,
                                 modelRepository = app.container.modelRepository,
                                 databaseFile = app.container.databaseFile,
+                                resourceEstimator = app.container.resourceEstimator,
+                                controller = app.container.inferenceController,
                             )
                         }
                     }

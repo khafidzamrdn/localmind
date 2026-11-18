@@ -19,10 +19,21 @@ data class GenerationParams(
     val contextLength: Int = 4096,
 )
 
+/**
+ * Device-wide defaults used when a model has no explicit runtime override.
+ * `threadCount = 0` means the app picks a conservative default.
+ */
+data class RuntimeDefaults(
+    val threadCount: Int = 0,
+    val batchSize: Int = LocalModel.DEFAULT_BATCH_SIZE,
+    val gpuEnabled: Boolean = false,
+)
+
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.DARK,
     val systemPrompt: String = DEFAULT_SYSTEM_PROMPT,
     val generation: GenerationParams = GenerationParams(),
+    val runtime: RuntimeDefaults = RuntimeDefaults(),
     val activeModelId: String? = null,
 ) {
     companion object {
