@@ -54,6 +54,10 @@ class LlamaCppEngine(
     cacheDir: File,
 ) : InferenceEngine {
 
+    override val id: String = BACKEND_ID
+    override val displayName: String = "llama.cpp (CPU)"
+    override val isDemo: Boolean = false
+
     private val lock = Mutex()
 
     /** Serialises native lifetime with decode; never held during a load. */
@@ -132,14 +136,10 @@ class LlamaCppEngine(
                 lastErrorText = null
                 Result.success(Unit)
             } catch (error: Throwable) {
-                // **FIX**: If load failed and file wasn't already copied to cache,
-                // try copying to cache and retry once. This handles the case where
-                // the ContentResolver returns a descriptor that passes fstat S_IFREG
-                # but llama.cpp cannot actually use it for mmap/fseek.
+                // If load failed and file wasn't already copied to cache,
+                // try copying to cache and retry once.
                 if (file != null && !file.copiedToCache) {
-                    try {
-                        file.close()
-                    } catch (_: Exception) {}
+                    try { file.close() } catch (_: Exception) {}
                     val cached = fileAccess.open(
                         model = model,
                         forceCache = true,
@@ -164,14 +164,14 @@ class LlamaCppEngine(
                             loadedContextLength = LlamaNative.contextSize(handle)
                             openedFile = cached
                             lastErrorText = null
-                            Result.success(Unit)
+                            return@withLock Result.success(Unit)
                         } else {
                             cached.close()
-                            throw error
+                            // Fall through to original error below
                         }
                     } catch (retryError: Throwable) {
                         cached.close()
-                        // Fall through to original error
+                        // Fall through to original error below
                     }
                 }
                 file?.close()
@@ -372,7 +372,7 @@ class LlamaCppEngine(
      * though `fstat` said it was a regular file, copies to the cache once and
      * probes the copy instead.
      */
-    private fun probeWithCacheFallback(
+    private suspend fun probeWithCacheFallback(
         model: LocalModel,
         seekableFile: OpenedModelFile,
         onProgress: (LoadProgress) -> Unit,

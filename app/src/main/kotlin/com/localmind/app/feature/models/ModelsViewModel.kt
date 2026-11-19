@@ -190,7 +190,7 @@ class ModelsViewModel(
 
     fun onThinkingModeChanged(modelId: String, enabled: Boolean) {
         viewModelScope.launch {
-            val model = modelRepository.getModel(modelId) ?: return@launch
+            var model = modelRepository.getModel(modelId) ?: return@launch
             model = model.copy(isThinkingEnabled = enabled)
             modelRepository.updateModel(model)
             _message.value = if (enabled) "Thinking mode enabled for ${model.displayName}" else "Thinking mode disabled for ${model.displayName}"

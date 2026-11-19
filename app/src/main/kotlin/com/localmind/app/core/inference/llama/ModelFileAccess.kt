@@ -74,13 +74,13 @@ class ModelFileAccess(
         )
 
         val stat = try {
-            Os.fstat(descriptor.fd)
+            Os.fstat(descriptor.fileDescriptor)
         } catch (error: Exception) {
             descriptor.closeQuietly()
             throw ModelAccessException("Could not inspect the document: ${error.message}", error)
         }
 
-        val seekable = isSeekable(descriptor.fd, stat.st_mode)
+        val seekable = isSeekable(descriptor, stat.st_mode)
         val reportedSize = stat.st_size.takeIf { it > 0 } ?: model.sizeBytes
         onProgress(LoadProgress(LoadPhase.PREPARING, 100))
 
@@ -122,8 +122,8 @@ class ModelFileAccess(
     /** Cheap, read-only description used by the diagnostics panel. */
     fun inspect(model: LocalModel): String = try {
         contentResolver.openFileDescriptor(Uri.parse(model.uri), "r")?.use { descriptor ->
-            val stat = Os.fstat(descriptor.fd)
-            val seekable = isSeekable(descriptor.fd, stat.st_mode)
+            val stat = Os.fstat(descriptor.fileDescriptor)
+            val seekable = isSeekable(descriptor, stat.st_mode)
             buildString {
                 append("Document openable · fd ${descriptor.fd} · ")
                 append(if (seekable) "seekable regular file" else "non-seekable stream (cache copy needed)")
@@ -225,12 +225,12 @@ class ModelFileAccess(
         }
     }
 
-    private fun isSeekable(fd: Int, mode: Int): Boolean {
+    private fun isSeekable(descriptor: ParcelFileDescriptor, mode: Int): Boolean {
         val regular = (mode and OsConstants.S_IFMT) == OsConstants.S_IFREG
         if (!regular) return false
         return runCatching {
             // A real file can be repositioned; pipes return ESPIPE.
-            Os.lseek(fd, 0L, OsConstants.SEEK_CUR)
+            Os.lseek(descriptor.fileDescriptor, 0L, OsConstants.SEEK_CUR)
             true
         }.getOrDefault(false)
     }

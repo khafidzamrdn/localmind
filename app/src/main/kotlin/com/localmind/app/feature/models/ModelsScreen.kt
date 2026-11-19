@@ -408,7 +408,7 @@ private fun ModelCard(
                     )
                     Spacer(Modifier.height(3.dp))
                     Row(
-                       Arrangement.spacedBy(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
                         modifier = Modifier.horizontalScrollableRow(),
                     ) {
                         MetaChip(model.format.name)
@@ -508,21 +508,21 @@ private fun ModelCard(
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 when (model.validation) {
-                    ModelValidation.HEADER_VALID -> StatusPill("Header validated")
-                    ModelValidation.UNVERIFIED -> StatusPill("Unverified")
-                    ModelValidation.INVALID -> StatusPill("Invalid")
-                    ModelValidation.MISSING -> StatusPill("Missing")
+                    ModelValidation.HEADER_VALID -> StatusPill("Header validated", MaterialTheme.colorScheme.secondary)
+                    ModelValidation.UNVERIFIED -> StatusPill("Unverified", MaterialTheme.colorScheme.tertiary)
+                    ModelValidation.INVALID -> StatusPill("Invalid", MaterialTheme.colorScheme.error)
+                    ModelValidation.MISSING -> StatusPill("Missing", MaterialTheme.colorScheme.error)
                 }
                 if (model.runtimeValidated) {
-                    StatusPill("Runtime OK")
+                    StatusPill("Runtime OK", MaterialTheme.colorScheme.secondary)
                 } else if (model.runtimeMessage != null && model.validation == ModelValidation.HEADER_VALID) {
-                    StatusPill("Runtime failed")
+                    StatusPill("Runtime failed", MaterialTheme.colorScheme.error)
                 }
                 if (isDefault) {
-                    StatusPill("Selected")
+                    StatusPill("Selected", MaterialTheme.colorScheme.primary)
                 }
                 if (loaded) {
-                    StatusPill("Loaded")
+                    StatusPill("Loaded", MaterialTheme.colorScheme.secondary)
                 }
                 Spacer(Modifier.weight(1f))
                 Text(
