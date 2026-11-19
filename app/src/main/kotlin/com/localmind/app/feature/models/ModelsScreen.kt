@@ -367,19 +367,21 @@ private fun ModelCard(
     val extras = LocalMindExtras.current
     var menuOpen by remember { mutableStateOf(false) }
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        shape = MaterialTheme.shapes.large,
-        border = BorderStroke(1.dp, extras.border.copy(alpha = 0.8f)),
+        color = MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.medium,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             Row(
-                modifier = Modifier.padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 8.dp),
+                modifier = Modifier.padding(start = 10.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.Top,
             ) {
                 Box(
                     modifier = Modifier
-                        .size(34.dp)
+                        .size(28.dp)
                         .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -391,134 +393,101 @@ private fun ModelCard(
                             ModelValidation.UNVERIFIED -> MaterialTheme.colorScheme.tertiary
                             else -> MaterialTheme.colorScheme.error
                         },
-                        modifier = Modifier.size(17.dp),
+                        modifier = Modifier.size(14.dp),
                     )
                 }
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = model.displayName,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(Modifier.height(5.dp))
+                    Spacer(Modifier.height(3.dp))
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(5.dp),
+                       Arrangement.spacedBy(3.dp),
                         modifier = Modifier.horizontalScrollableRow(),
                     ) {
                         MetaChip(model.format.name)
                         model.quantizationLabel?.let { MetaChip(it) }
-                        MetaChip(if (model.sizeBytes > 0) formatFileSize(model.sizeBytes) else "size unknown")
-                        model.parameterCount?.let { MetaChip(formatParameterCount(it)) }
                     }
                     if (model.architecture != null) {
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(3.dp))
                         Text(
-                            text = buildString {
-                                append(model.architecture)
-                                model.trainedContextLength?.let { append(" · $it ctx trained") }
-                                model.blockCount?.let { append(" · $it layers") }
-                            },
+                            text = model.architecture,
                             style = MaterialTheme.typography.labelSmall,
                             color = extras.mutedText,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    Row(
-                        modifier = Modifier
-                            .padding(start = 4.dp, end = 4.dp, vertical = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Text(
-                            text = if (model.isThinkingEnabled) "Thinking: ON" else "Thinking: OFF",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (model.isThinkingEnabled) MaterialTheme.colorScheme.primary else extras.mutedText,
-                        )
-                        Switch(
-                            checked = model.isThinkingEnabled,
-                            onCheckedChange = {
-                                onThinkingModeChanged(it)
-                            },
-                        )
-                    }
+                    Text(
+                        text = if (model.isThinkingEnabled) "Thinking: ON" else "Thinking: OFF",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (model.isThinkingEnabled) MaterialTheme.colorScheme.primary else extras.mutedText,
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Switch(
+                        checked = model.isThinkingEnabled,
+                        onCheckedChange = {
+                            onThinkingModeChanged(it)
+                        },
+                    )
                 }
                 Box {
-                    IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(32.dp)) {
+                    IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(24.dp)) {
                         Icon(
                             imageVector = Icons.Outlined.MoreVert,
                             contentDescription = "Model actions",
                             tint = extras.mutedText,
-                            modifier = Modifier.size(17.dp),
+                            modifier = Modifier.size(14.dp),
                         )
                     }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
-                            text = { Text("Set as selected model") },
+                            text = { Text("Set as selected") },
                             enabled = model.isUsable && !isDefault,
                             leadingIcon = { Icon(Icons.Outlined.Star, contentDescription = null) },
-                            onClick = {
-                                menuOpen = false
-                                onSetDefault()
-                            },
+                            onClick = { menuOpen = false; onSetDefault() },
                         )
                         if (isDefault) {
                             DropdownMenuItem(
-                                text = { Text("Clear selected model") },
-                                onClick = {
-                                    menuOpen = false
-                                    onClearDefault()
-                                },
+                                text = { Text("Clear selection") },
+                                onClick = { menuOpen = false; onClearDefault() },
                             )
                         }
                         DropdownMenuItem(
-                            text = { Text(if (probing) "Checking runtime…" else "Test runtime compatibility") },
+                            text = { Text(if (probing) "Checking…" else "Test runtime") },
                             enabled = model.isUsable && !probing && probeSupported,
                             leadingIcon = { Icon(Icons.Outlined.Refresh, contentDescription = null) },
-                            onClick = {
-                                menuOpen = false
-                                onTestCompatibility()
-                            },
+                            onClick = { menuOpen = false; onTestCompatibility() },
                         )
                         DropdownMenuItem(
                             text = { Text("Diagnostics") },
                             enabled = probeSupported,
                             leadingIcon = { Icon(Icons.Outlined.Info, contentDescription = null) },
-                            onClick = {
-                                menuOpen = false
-                                onDiagnostics()
-                            },
+                            onClick = { menuOpen = false; onDiagnostics() },
                         )
                         DropdownMenuItem(
-                            text = { Text("Configure inference") },
+                            text = { Text("Configure") },
                             leadingIcon = { Icon(Icons.Outlined.Tune, contentDescription = null) },
-                            onClick = {
-                                menuOpen = false
-                                onConfigure()
-                            },
+                            onClick = { menuOpen = false; onConfigure() },
                         )
                         DropdownMenuItem(
-                            text = { Text(if (validating) "Validating…" else "Re-validate GGUF") },
+                            text = { Text(if (validating) "Validating…" else "Re-validate") },
                             enabled = !validating,
                             leadingIcon = { Icon(Icons.Outlined.Refresh, contentDescription = null) },
-                            onClick = {
-                                menuOpen = false
-                                onRevalidate()
-                            },
+                            onClick = { menuOpen = false; onRevalidate() },
                         )
                         DropdownMenuItem(
-                            text = { Text("File details") },
-                            onClick = {
-                                menuOpen = false
-                                onDetails()
-                            },
+                            text = { Text("Details") },
+                            onClick = { menuOpen = false; onDetails() },
                         )
                         DropdownMenuItem(
-                            text = { Text("Remove from library", color = MaterialTheme.colorScheme.error) },
+                            text = { Text("Remove") },
                             leadingIcon = {
                                 Icon(
                                     Icons.Outlined.Delete,
@@ -526,36 +495,34 @@ private fun ModelCard(
                                     tint = MaterialTheme.colorScheme.error,
                                 )
                             },
-                            onClick = {
-                                menuOpen = false
-                                onRemove()
-                            },
+                            onClick = { menuOpen = false; onRemove() },
                         )
                     }
                 }
             }
 
             Row(
-                modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 4.dp, top = 2.dp),
+                modifier = Modifier
+                    .padding(start = 10.dp, end = 10.dp, bottom = 6.dp, top = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 when (model.validation) {
-                    ModelValidation.HEADER_VALID -> StatusPill("Header validated", MaterialTheme.colorScheme.secondary)
-                    ModelValidation.UNVERIFIED -> StatusPill("Unverified", MaterialTheme.colorScheme.tertiary)
-                    ModelValidation.INVALID -> StatusPill("Invalid", MaterialTheme.colorScheme.error)
-                    ModelValidation.MISSING -> StatusPill("Missing", MaterialTheme.colorScheme.error)
+                    ModelValidation.HEADER_VALID -> StatusPill("Header validated")
+                    ModelValidation.UNVERIFIED -> StatusPill("Unverified")
+                    ModelValidation.INVALID -> StatusPill("Invalid")
+                    ModelValidation.MISSING -> StatusPill("Missing")
                 }
                 if (model.runtimeValidated) {
-                    StatusPill("Runtime OK", MaterialTheme.colorScheme.secondary)
+                    StatusPill("Runtime OK")
                 } else if (model.runtimeMessage != null && model.validation == ModelValidation.HEADER_VALID) {
-                    StatusPill("Runtime failed", MaterialTheme.colorScheme.error)
+                    StatusPill("Runtime failed")
                 }
                 if (isDefault) {
-                    StatusPill("Selected", MaterialTheme.colorScheme.primary)
+                    StatusPill("Selected")
                 }
                 if (loaded) {
-                    StatusPill("Loaded", MaterialTheme.colorScheme.secondary)
+                    StatusPill("Loaded")
                 }
                 Spacer(Modifier.weight(1f))
                 Text(
@@ -576,7 +543,7 @@ private fun ModelCard(
                     text = validationMessage,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                 )
             }
             if (failureMessage != null) {
@@ -586,7 +553,7 @@ private fun ModelCard(
                     color = MaterialTheme.colorScheme.error,
                     maxLines = 5,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                 )
             } else if (model.runtimeMessage != null && model.validation == ModelValidation.HEADER_VALID) {
                 Text(
@@ -595,7 +562,7 @@ private fun ModelCard(
                     color = MaterialTheme.colorScheme.error,
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                 )
             }
 
@@ -603,7 +570,7 @@ private fun ModelCard(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 2.dp),
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
                 ) {
                     LinearProgressIndicator(
                         progress = { (loadingPercent.coerceIn(0, 100)) / 100f },
@@ -623,7 +590,7 @@ private fun ModelCard(
                     .fillMaxWidth()
                     .padding(start = 14.dp, end = 14.dp, bottom = 12.dp, top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 Text(
                     text = "${model.contextLength} ctx · " +
