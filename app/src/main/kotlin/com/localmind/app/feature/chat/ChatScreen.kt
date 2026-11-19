@@ -199,6 +199,10 @@ fun ChatScreen(
                 statusLabel = statusLabel,
                 statusColor = statusColor,
                 isDemoEngine = viewModel.isDemoEngine,
+                thinkingEnabled = activeModel?.isThinkingEnabled == true,
+                onThinkingToggle = {
+                    viewModel.setThinkingEnabled(activeModel?.isThinkingEnabled != true)
+                },
                 onMenu = { scope.launch { drawerState.open() } },
                 onNewChat = { viewModel.newChat() },
                 onModelClick = { showModelPicker = true },
@@ -347,6 +351,8 @@ private fun ChatHeader(
     statusLabel: String,
     statusColor: Color,
     isDemoEngine: Boolean,
+    thinkingEnabled: Boolean,
+    onThinkingToggle: () -> Unit,
     onMenu: () -> Unit,
     onNewChat: () -> Unit,
     onModelClick: () -> Unit,
@@ -402,6 +408,23 @@ private fun ChatHeader(
                             color = MaterialTheme.colorScheme.tertiary,
                         )
                     }
+                }
+            }
+            if (!isDemoEngine) {
+                IconButton(onClick = onThinkingToggle) {
+                    Icon(
+                        imageVector = Icons.Outlined.Lightbulb,
+                        contentDescription = if (thinkingEnabled) {
+                            "Disable thinking mode"
+                        } else {
+                            "Enable thinking mode"
+                        },
+                        tint = if (thinkingEnabled) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            extras.mutedText
+                        },
+                    )
                 }
             }
             IconButton(onClick = onNewChat) {

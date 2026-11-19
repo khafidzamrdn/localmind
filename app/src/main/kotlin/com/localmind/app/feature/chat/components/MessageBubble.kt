@@ -40,6 +40,7 @@ import com.localmind.app.core.domain.model.MessageStatus
 import com.localmind.app.core.ui.components.MarkdownText
 import com.localmind.app.core.ui.components.MetaChip
 import com.localmind.app.core.ui.theme.LocalMindExtras
+import com.localmind.app.core.util.ThinkingParser
 import kotlinx.coroutines.delay
 
 @Composable
@@ -156,23 +157,37 @@ private fun AssistantBubble(
             }
         }
         Spacer(Modifier.size(6.dp))
+        val split = remember(message.content) { ThinkingParser.split(message.content) }
+        val visibleAnswer = split.answer
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainer,
             shape = MaterialTheme.shapes.large,
             border = BorderStroke(1.dp, extras.border.copy(alpha = 0.7f)),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            MarkdownText(
-                text = message.content,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            )
+            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                if (split.hasReasoning) {
+                    ThinkingSection(
+                        reasoning = split.reasoning,
+                        streaming = false,
+                        hasAnswer = visibleAnswer.isNotBlank(),
+                        stateKey = message.id,
+                    )
+                    if (visibleAnswer.isNotBlank()) Spacer(Modifier.size(10.dp))
+                }
+                if (visibleAnswer.isNotBlank()) {
+                    MarkdownText(text = visibleAnswer)
+                } else if (!split.hasTags) {
+                    MarkdownText(text = message.content)
+                }
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             SmallAction(
                 icon = if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy,
                 contentDescription = "Copy response",
                 onClick = {
-                    clipboard.setText(AnnotatedString(message.content))
+                    clipboard.setText(AnnotatedString(visibleAnswer.ifBlank { message.content }))
                     copied = true
                 },
             )
@@ -213,6 +228,7 @@ fun StreamingBubble(
             )
         }
         Spacer(Modifier.size(6.dp))
+        val split = remember(text) { ThinkingParser.split(text) }
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainer,
             shape = MaterialTheme.shapes.large,
@@ -236,10 +252,22 @@ fun StreamingBubble(
                     }
                 }
             } else {
-                MarkdownText(
-                    text = text,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                )
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+                    if (split.hasReasoning || split.isThinking) {
+                        ThinkingSection(
+                            reasoning = split.reasoning,
+                            streaming = true,
+                            hasAnswer = split.answer.isNotBlank(),
+                            stateKey = "streaming",
+                        )
+                        if (split.answer.isNotBlank()) Spacer(Modifier.size(10.dp))
+                    }
+                    if (split.answer.isNotBlank()) {
+                        MarkdownText(text = split.answer)
+                    } else if (!split.hasTags && text.isNotBlank()) {
+                        MarkdownText(text = text)
+                    }
+                }
             }
         }
     }

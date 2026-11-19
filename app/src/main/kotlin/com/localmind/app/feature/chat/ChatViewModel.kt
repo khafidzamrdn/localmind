@@ -214,6 +214,15 @@ class ChatViewModel(
         viewModelScope.launch { settingsRepository.setActiveModel(modelId) }
     }
 
+    /** Toggles reasoning for the selected model from the chat header. */
+    fun setThinkingEnabled(enabled: Boolean) {
+        val modelId = settings.value.activeModelId ?: return
+        viewModelScope.launch {
+            val model = modelRepository.getModel(modelId) ?: return@launch
+            modelRepository.updateModel(model.copy(isThinkingEnabled = enabled))
+        }
+    }
+
     private fun startUserTurn(prompt: String) {
         generationJob = viewModelScope.launch {
             val existingId = currentConversationId.value
@@ -274,6 +283,7 @@ class ChatViewModel(
             params = config.generation,
             model = model,
             config = model?.let { InferenceConfig.from(it) } ?: InferenceConfig(),
+            thinkingEnabled = model?.isThinkingEnabled == true,
         )
 
         var lastFlush = 0L

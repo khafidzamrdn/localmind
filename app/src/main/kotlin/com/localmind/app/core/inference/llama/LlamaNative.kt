@@ -78,6 +78,7 @@ internal object LlamaNative {
         topP: Float,
         topK: Int,
         repeatPenalty: Float,
+        thinkingEnabled: Boolean,
         callback: TokenCallback,
     ): Int
 }

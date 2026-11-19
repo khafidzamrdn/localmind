@@ -233,10 +233,49 @@ bool emit_text(JNIEnv * env, jobject callback, jmethodID method, const std::stri
     return keep_going == JNI_TRUE;
 }
 
+std::string rtrim_copy(const std::string & value) {
+    size_t end = value.size();
+    while (end > 0 && std::isspace(static_cast<unsigned char>(value[end - 1]))) --end;
+    return value.substr(0, end);
+}
+
+struct ThinkingMarkers {
+    std::string open;
+    std::string close;
+};
+
+ThinkingMarkers detect_thinking_markers(const std::string & tmpl, llama_model * model) {
+    auto has = [&](const char * marker) { return tmpl.find(marker) != std::string::npos; };
+    // Some tokenizers register the marker with a leading space, Qwen3 uses a
+    // plain <think> pair. Check the widest form first so the returned marker
+    // is the exact text the template expects.
+    if (has("  thinking") || has("  response")) return { "  thinking", "  response" };
+    if (has(" thinking") || has(" response")) return { " thinking", " response" };
+    if (has("<thinking>") || has("</thinking>")) return { "<thinking>", "</thinking>" };
+    if (has("<think") || has("</think")) return { "<think", "</think" };
+    if (has("<|think|>")) return { "<|think|>", "<|/think|>" };
+    if (has("<|begin_of_thought|>")) return { "<|begin_of_thought|>", "<|end_of_thought|>" };
+    if (has("[think]") || has("[/think]")) return { "[think]", "[/think]" };
+
+    if (model != nullptr) {
+        char arch[128] = {0};
+        if (llama_model_meta_val_str(model, "general.architecture", arch, sizeof(arch)) > 0) {
+            const std::string architecture = lower_copy(arch);
+            if (architecture.find("qwen3") != std::string::npos ||
+                architecture.find("qwq") != std::string::npos ||
+                architecture.find("deepseek") != std::string::npos) {
+                return { "<think", "</think" };
+            }
+        }
+    }
+    return {};
+}
+
 std::string build_prompt(
     llama_model * model,
     const std::vector<std::string> & roles,
-    const std::vector<std::string> & contents) {
+    const std::vector<std::string> & contents,
+    bool thinking_enabled) {
     std::vector<llama_chat_message> messages;
     messages.reserve(roles.size());
     for (size_t i = 0; i < roles.size(); ++i) {
@@ -248,27 +287,53 @@ std::string build_prompt(
         tmpl = "chatml";
     }
 
+    std::string formatted;
     int32_t needed = llama_chat_apply_template(
         tmpl, messages.data(), messages.size(), true, nullptr, 0);
     if (needed > 0) {
-        std::string formatted(static_cast<size_t>(needed), '\0');
+        std::string buffer(static_cast<size_t>(needed), '\0');
         int32_t written = llama_chat_apply_template(
-            tmpl, messages.data(), messages.size(), true, formatted.data(), needed);
+            tmpl, messages.data(), messages.size(), true, buffer.data(), needed);
         if (written > 0) {
-            formatted.resize(static_cast<size_t>(written));
-            return formatted;
+            buffer.resize(static_cast<size_t>(written));
+            formatted = buffer;
         }
     }
 
-    std::string fallback;
-    for (size_t i = 0; i < roles.size(); ++i) {
-        fallback += roles[i];
-        fallback += ": ";
-        fallback += contents[i];
-        fallback += '\n';
+    if (formatted.empty()) {
+        for (size_t i = 0; i < roles.size(); ++i) {
+            formatted += roles[i];
+            formatted += ": ";
+            formatted += contents[i];
+            formatted += '\n';
+        }
+        formatted += "assistant:";
     }
-    fallback += "assistant:";
-    return fallback;
+
+    // Disable reasoning by pre-filling an empty reasoning block. The model then
+    // continues directly with the answer instead of thinking out loud.
+    if (!thinking_enabled) {
+        const ThinkingMarkers markers = detect_thinking_markers(tmpl, model);
+        if (!markers.open.empty()) {
+            std::string prompt = rtrim_copy(formatted);
+            const bool already_open =
+                prompt.size() >= markers.open.size() &&
+                prompt.compare(
+                    prompt.size() - markers.open.size(),
+                    markers.open.size(),
+                    markers.open) == 0;
+            if (!already_open) {
+                prompt += "\n";
+                prompt += markers.open;
+            }
+            prompt += "\n\n";
+            prompt += markers.close;
+            prompt += "\n\n";
+            return prompt;
+        }
+    }
+
+    return formatted;
 }
 
 void free_session(Session * session) {
@@ -550,6 +615,7 @@ Java_com_localmind_app_core_inference_llama_LlamaNative_generate(
     jfloat top_p,
     jint top_k,
     jfloat repeat_penalty,
+    jboolean thinking_enabled,
     jobject callback) {
     auto * session = reinterpret_cast<Session *>(handle);
     if (session == nullptr) {
@@ -572,7 +638,8 @@ Java_com_localmind_app_core_inference_llama_LlamaNative_generate(
             return -1;
         }
 
-        const std::string prompt = build_prompt(session->model, roles, contents);
+        const std::string prompt =
+            build_prompt(session->model, roles, contents, thinking_enabled == JNI_TRUE);
         if (prompt.empty()) {
             throw_illegal_state(env, "The chat template produced an empty prompt.");
             return -1;

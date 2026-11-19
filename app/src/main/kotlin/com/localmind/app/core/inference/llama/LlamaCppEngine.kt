@@ -14,6 +14,7 @@ import com.localmind.app.core.inference.LoadProgress
 import com.localmind.app.core.inference.RuntimeProbeResult
 import com.localmind.app.core.inference.TokenUsage
 import com.localmind.app.core.inference.estimateTokens
+import com.localmind.app.core.util.ThinkingParser
 import java.io.File
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
@@ -261,8 +262,16 @@ class LlamaCppEngine(
             // Empty assistant rows appear when a reply was stopped before the
             // first token arrived; they carry no information for the model.
             if (message.role == MessageRole.ASSISTANT && message.content.isBlank()) return@forEach
+            // With thinking off, do not feed earlier reasoning back as context;
+            // it primes the model to keep reasoning.
+            val content = if (!request.thinkingEnabled && message.role == MessageRole.ASSISTANT) {
+                ThinkingParser.stripReasoning(message.content)
+            } else {
+                message.content
+            }
+            if (message.role == MessageRole.ASSISTANT && content.isBlank()) return@forEach
             roles += message.role.jniName()
-            contents += message.content
+            contents += content
         }
         if (contents.isEmpty()) {
             return flowOf(
@@ -299,6 +308,7 @@ class LlamaCppEngine(
                             topP = params.topP.toFloat(),
                             topK = params.topK,
                             repeatPenalty = params.repeatPenalty.toFloat(),
+                            thinkingEnabled = request.thinkingEnabled,
                             callback = callback,
                         )
                     }

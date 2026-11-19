@@ -72,6 +72,8 @@ data class InferenceRequest(
     val params: GenerationParams,
     val model: LocalModel?,
     val config: InferenceConfig = InferenceConfig(),
+    /** When false, reasoning blocks are skipped for models that support them. */
+    val thinkingEnabled: Boolean = false,
 )
 
 /** Thrown when a model load was cancelled by the user or by the app. */
