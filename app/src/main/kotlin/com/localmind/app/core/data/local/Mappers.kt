@@ -78,6 +78,7 @@ fun ModelEntity.toDomain() = LocalModel(
     gpuLayers = gpuLayers,
     isThinkingEnabled = isThinkingEnabled,
     runtimeValidated = runtimeValidated,
+    cachedPath = cachedPath,
     runtimeDescription = runtimeDescription,
     runtimeMessage = runtimeMessage,
 )

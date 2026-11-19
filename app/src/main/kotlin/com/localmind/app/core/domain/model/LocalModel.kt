@@ -66,6 +66,8 @@ data class LocalModel(
     val runtimeMessage: String? = null,
     /** Apakah mode thinking (reasoner) Aktif untuk model ini. */
     val isThinkingEnabled: Boolean = false,
+    /** Path file yang disalin ke dalam aplikasi (jika ada). File asli user tetap utuh di storage external. */
+    val cachedPath: String? = null,
 ) {
     /** True only for files whose GGUF header was read successfully. */
     val isUsable: Boolean get() = format == ModelFormat.GGUF && validation == ModelValidation.HEADER_VALID
