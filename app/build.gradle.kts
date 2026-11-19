@@ -14,7 +14,7 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = 2
-        versionName = "0.2.0"
+        versionName = "0.2.2"
 
         ndk {
             // The bundled llama.cpp build is produced for 64-bit ARM only.

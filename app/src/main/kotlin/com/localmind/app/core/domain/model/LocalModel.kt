@@ -64,6 +64,8 @@ data class LocalModel(
     val runtimeDescription: String? = null,
     /** Last runtime failure reported by the native backend, if any. */
     val runtimeMessage: String? = null,
+    /** Apakah mode thinking (reasoner) Aktif untuk model ini. */
+    val isThinkingEnabled: Boolean = false,
 ) {
     /** True only for files whose GGUF header was read successfully. */
     val isUsable: Boolean get() = format == ModelFormat.GGUF && validation == ModelValidation.HEADER_VALID

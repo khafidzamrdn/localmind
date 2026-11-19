@@ -132,6 +132,48 @@ class LlamaCppEngine(
                 lastErrorText = null
                 Result.success(Unit)
             } catch (error: Throwable) {
+                // **FIX**: If load failed and file wasn't already copied to cache,
+                // try copying to cache and retry once. This handles the case where
+                // the ContentResolver returns a descriptor that passes fstat S_IFREG
+                # but llama.cpp cannot actually use it for mmap/fseek.
+                if (file != null && !file.copiedToCache) {
+                    try {
+                        file.close()
+                    } catch (_: Exception) {}
+                    val cached = fileAccess.open(
+                        model = model,
+                        forceCache = true,
+                        onProgress = onProgress,
+                        isCancelled = ::cancelled,
+                    )
+                    val retryProbe = try {
+                        runProbe(cached.path, onProgress, ::cancelled)
+                        handle = LlamaNative.loadModel(
+                            path = cached.path,
+                            contextLength = config.contextLength,
+                            batchSize = config.batchSize,
+                            threadCount = config.resolvedThreadCount(),
+                            gpuLayers = config.gpuLayers,
+                            progress = LlamaNative.ProgressCallback { percent ->
+                                onProgress(LoadProgress(LoadPhase.LOADING, percent))
+                                !cancelled()
+                            },
+                        )
+                        if (handle != 0L) {
+                            loadedModelId = model.id
+                            loadedContextLength = LlamaNative.contextSize(handle)
+                            openedFile = cached
+                            lastErrorText = null
+                            Result.success(Unit)
+                        } else {
+                            cached.close()
+                            throw error
+                        }
+                    } catch (retryError: Throwable) {
+                        cached.close()
+                        // Fall through to original error
+                    }
+                }
                 file?.close()
                 releaseLocked()
                 Result.failure(toFailure(error, cancelled()))

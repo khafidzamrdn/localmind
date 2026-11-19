@@ -239,6 +239,7 @@ fun ModelsScreen(
                             onConfigure = { configureModel = model },
                             onDetails = { detailsModel = model },
                             onRemove = { removeTarget = model },
+                            onThinkingModeChanged = { viewModel.onThinkingModeChanged(model.id, it) },
                         )
                     }
                     item(key = "milestone") {
@@ -361,6 +362,7 @@ private fun ModelCard(
     onConfigure: () -> Unit,
     onDetails: () -> Unit,
     onRemove: () -> Unit,
+    onThinkingModeChanged: (Boolean) -> Unit,
 ) {
     val extras = LocalMindExtras.current
     var menuOpen by remember { mutableStateOf(false) }
@@ -424,6 +426,24 @@ private fun ModelCard(
                             color = extras.mutedText,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .padding(start = 4.dp, end = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = if (model.isThinkingEnabled) "Thinking: ON" else "Thinking: OFF",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (model.isThinkingEnabled) MaterialTheme.colorScheme.primary else extras.mutedText,
+                        )
+                        Switch(
+                            checked = model.isThinkingEnabled,
+                            onCheckedChange = {
+                                onThinkingModeChanged(it)
+                            },
                         )
                     }
                 }

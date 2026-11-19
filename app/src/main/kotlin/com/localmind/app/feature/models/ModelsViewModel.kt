@@ -188,6 +188,15 @@ class ModelsViewModel(
         }
     }
 
+    fun onThinkingModeChanged(modelId: String, enabled: Boolean) {
+        viewModelScope.launch {
+            val model = modelRepository.getModel(modelId) ?: return@launch
+            model = model.copy(isThinkingEnabled = enabled)
+            modelRepository.updateModel(model)
+            _message.value = if (enabled) "Thinking mode enabled for ${model.displayName}" else "Thinking mode disabled for ${model.displayName}"
+        }
+    }
+
     /** Called by the Load button; asks for confirmation when memory is tight. */
     fun requestLoad(modelId: String) {
         val model = models.value.firstOrNull { it.id == modelId } ?: return
