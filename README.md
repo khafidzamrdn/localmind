@@ -4,24 +4,27 @@ Local-first AI workspace for Android. LocalMind is a native Kotlin + Jetpack Com
 on-device models and, in later milestones, running an approval-gated coding agent against a user-granted
 project workspace.
 
-This repository currently contains **Milestone 3 — Termux command tools**. Chat, persistence, streaming UI,
-GGUF validation, model management and a bundled llama.cpp CPU backend are real. The first agent tool is also
-real: the model may propose a shell command, but it only runs in Termux after you approve it. File, workspace
-and network tools are not implemented yet and are clearly labeled in the app.
+This repository currently contains **Milestone 4 — agent loop with smart approval**. Chat, persistence,
+streaming UI, GGUF validation, model management and a bundled llama.cpp CPU backend are real. The Termux tool
+is now a small agent: the model plans a step, runs one command, reads the result, then decides what to do next.
+Read-only commands may run automatically; anything that changes the system still needs your approval. File,
+workspace and network tools are not implemented yet and are clearly labeled in the app.
 
 ## Status
 
 | Item | State |
 | --- | --- |
 | Debug APK | Built successfully (`app/build/outputs/apk/debug/app-debug.apk`) |
-| Unit tests | 50 passing (`:app:testDebugUnitTest`) |
+| Unit tests | 63 passing (`:app:testDebugUnitTest`) |
 | Minimum Android | 10 (API 29) |
 | Target SDK | 35 |
 | AI backend | llama.cpp `v1.0.0`, CPU, arm64-v8a (demo engine fallback) |
-| Termux tools | Opt-in, off by default; every command needs approval (**not yet verified on a device**) |
+| Termux tools | Opt-in, off by default; smart mode auto-runs read-only steps, writes need approval |
+| Agent budget | 6 commands per request; stops after 2 consecutive failures or a repeated command |
 | Network permission | **None** — the manifest has no `INTERNET` permission |
 
-See [docs/MILESTONE-2.md](docs/MILESTONE-2.md) for the latest build report and
+See [docs/MILESTONE-3.md](docs/MILESTONE-3.md) for the latest build report,
+[docs/MILESTONE-2.md](docs/MILESTONE-2.md) for local inference and
 [docs/MILESTONE-1.md](docs/MILESTONE-1.md) for the foundation report.
 
 ## What works in this build
@@ -43,20 +46,24 @@ See [docs/MILESTONE-2.md](docs/MILESTONE-2.md) for the latest build report and
   clearly labeled demo fallback when the native library or a loadable model is unavailable.
 - **Settings** persisted with DataStore: dark/light/system theme, system prompt, sampling parameters, context
   length, tool policy documentation, storage usage, delete all chats, backend status and about.
-- **Termux command tool (opt-in).** When enabled, the model is told about one tool and may propose a single
-  shell command in a `<tool_call>` block. The command is shown in a review card and **never runs automatically**;
-  tapping *Run in Termux* sends it through Termux's `RUN_COMMAND` service and the captured stdout/stderr/exit
-  code is added back as a tool result. Output is capped for context safety, the wait limit is 30 s, and the
-  result can be stopped, declined, or cancelled. A manual **Termux console** in Settings tests the same bridge
-  without a model in the loop.
+- **Termux agent tool (opt-in).** When enabled, the model is told about one tool and plans its own steps in a
+  `<tool_call>` block. After each result it is called again, so it can read a directory, inspect one file, then
+  summarize. **Smart mode** auto-runs only a conservative read-only allowlist (`ls`, `cat`, `head`, `tail`, `wc`,
+  `grep`, `find`, `stat`, `du`, `df`, `which`, `uname`, `git status/diff/log`, …); writes, deletes, installs and
+  network commands wait for a tap. A command is refused outright when it matches the hard-block list (`sudo`,
+  `su`, reboots, `mkfs`, `dd` to a block device, `pm uninstall`, piping into a shell, catastrophic `rm`, …).
+  The agent budget is 6 commands per request, it stops after two consecutive failures or a repeated command,
+  and **Stop** cancels the whole turn. Every step keeps its own result card with exit code, stdout/stderr and an
+  *auto-approved* label, so the audit trail stays in the chat. Output is capped for context safety and the wait
+  limit is 30 s. A manual **Termux console** in Settings tests the same bridge without a model in the loop.
 - **Projects tab** that documents the upcoming workspace model without pretending it exists.
 
 ## What is intentionally not implemented yet
 
 - GPU acceleration. The bundled llama.cpp build is CPU-only; the GPU row is disabled and says so.
 - Non-arm64 native builds. Only `arm64-v8a` is packaged; other ABIs use the demo engine.
-- File read/write/delete tools, multi-step agent orchestration and an agent task panel. Only the Termux
-  command bridge exists today.
+- File read/write/delete tools, a workspace folder grant and a dedicated agent task panel. The Termux
+  command bridge and its in-chat step timeline exist today.
 - Workspace folder grants, file explorer, project indexing, context retrieval.
 - File attachments, conversation summarization, chat paging, message search.
 - Streaming persistence of partial tokens across process death (partial output is saved on stop, not per token).
@@ -75,6 +82,8 @@ app/src/main/kotlin/com/localmind/app
 │   ├── data/{local,repository,settings}
 │   ├── gguf                        # pure-Kotlin GGUF parser + SAF validator
 │   ├── inference                   # contracts, controller, estimator, demo + llama.cpp engines
+│   ├── termux                      # RUN_COMMAND bridge and result receiver
+│   ├── tool                        # tool protocol, parser, codec and command risk policy
 │   ├── ui/{theme,components,markdown}
 │   └── util
 ├── di/AppContainer.kt              # manual DI
@@ -90,9 +99,10 @@ scripts/build-native.sh                # reproducible native build
 ```
 
 Core interfaces: `InferenceEngine`, `ConversationRepository`, `ModelRepository`, `SettingsRepository`.
-Planned interfaces (`ToolRegistry`, `ToolExecutor`, `PermissionManager`, `AgentOrchestrator`,
+`ToolRegistry`, `ToolCallParser`, `ToolResultCodec` and `CommandPolicy` implement the Termux tool protocol and
+its risk gate. Planned interfaces (`ToolExecutor`, `PermissionManager`, `AgentOrchestrator`,
 `WorkspaceRepository`, `ContextManager`) are intentionally **not** stubbed yet; they will be added with their
-first real implementations in Milestones 3–5.
+first real implementations in later milestones.
 
 Stack: Kotlin 2.0.21, AGP 8.7.3, Compose BOM 2024.11.00, Material 3, Navigation Compose, Room 2.6.1 (KSP),
 DataStore Preferences, Coroutines/Flow, manual dependency injection.
@@ -158,12 +168,14 @@ LocalMind never executes a shell itself. Commands run under Termux's user after 
 
    ```bash
    echo 'allow-external-apps=true' >> ~/.termux/termux.properties
+   termux-reload-settings
    ```
 
-   Then force-stop and reopen Termux.
+   Force-stop and reopen Termux if the setting was added while it was running.
 4. Open **Settings → Agent & tool policy → Open Termux console** and run `echo ok` to confirm the bridge.
-5. Only then enable **Termux commands**, ask the model for something like "list my Termux home directory", and
-   approve the proposal with **Run in Termux**.
+5. Only then enable **Termux commands** and leave **Auto-run read-only commands** on. Ask the model for something
+   like "list the files here, then tell me the largest one"; the read-only steps run by themselves and any write
+   still shows a **Run in Termux** card.
 
 The wait limit does not kill a command inside Termux; it only stops LocalMind waiting for the result. A failed
 permission or `allow-external-apps` check is reported as a setup hint in the result card.
@@ -179,8 +191,8 @@ permission or `allow-external-apps` check is reported as a setup hint in the res
 1. **Foundation** — done.
 2. **Local inference** — done: llama.cpp CPU backend, GGUF validation, load/unload, memory checks, real
    streaming, backend configuration.
-3. **Agent core** — in progress: Termux command tool, parser, approval card and result loop shipped; file
-   tools, permission engine and task panel remain.
+3. **Agent core** — in progress: Termux command tool, plan→act→observe loop, risk policy, read-only auto-run,
+   step budget and result cards shipped; file tools, a workspace permission engine and a task panel remain.
 4. **Workspace** — SAF folder grants, file explorer, project tree, context indexing.
 5. **Coding tools** — search/read/write/edit with diff previews and confirmations.
 6. **Advanced** — summarization, retrieval, paging, performance and UX polish.

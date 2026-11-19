@@ -7,6 +7,7 @@ enum class ToolStatus(val label: String) {
     ERROR("error"),
     TIMEOUT("timeout"),
     DECLINED("declined"),
+    BLOCKED("blocked"),
     CANCELLED("cancelled");
 
     companion object {
@@ -24,6 +25,8 @@ data class ToolResultContent(
     val stdout: String = "",
     val stderr: String = "",
     val note: String? = null,
+    /** True when the read-only policy approved this call without a tap. */
+    val auto: Boolean = false,
 ) {
     val isSuccess: Boolean get() = status == ToolStatus.OK
 }
@@ -67,6 +70,10 @@ object ToolResultCodec {
                 append(',')
                 appendField("note", result.note)
             }
+            if (result.auto) {
+                append(',')
+                append("\"auto\":true")
+            }
             append('}')
         }
         return "$OPEN_TAG\n$json\n$CLOSE_TAG"
@@ -90,10 +97,15 @@ object ToolResultCodec {
             stdout = obj["stdout"] as? String ?: "",
             stderr = obj["stderr"] as? String ?: "",
             note = obj["note"] as? String,
+            auto = obj["auto"] as? Boolean ?: false,
         )
     }
 
-    fun fromRun(call: ToolCall, result: TermuxRunResult): ToolResultContent {
+    fun fromRun(
+        call: ToolCall,
+        result: TermuxRunResult,
+        auto: Boolean = false,
+    ): ToolResultContent {
         return when (result) {
             is TermuxRunResult.Completed -> {
                 val stdout = truncate(result.stdout)
@@ -114,6 +126,7 @@ object ToolResultCodec {
                     stdout = stdout,
                     stderr = stderr,
                     note = notes.joinToString("; ").takeIf { it.isNotEmpty() },
+                    auto = auto,
                 )
             }
 
@@ -123,6 +136,7 @@ object ToolResultCodec {
                 command = call.command.orEmpty(),
                 stderr = result.message,
                 note = result.hint,
+                auto = auto,
             )
 
             is TermuxRunResult.TimedOut -> ToolResultContent(
@@ -131,9 +145,18 @@ object ToolResultCodec {
                 command = call.command.orEmpty(),
                 note = "LocalMind stopped waiting after ${result.timeoutMs / 1000}s. ${result.hint.orEmpty()}"
                     .trim(),
+                auto = auto,
             )
         }
     }
+
+    /** A command refused by [CommandPolicy]; nothing was executed. */
+    fun blocked(call: ToolCall, reason: String?): ToolResultContent = ToolResultContent(
+        tool = call.name,
+        status = ToolStatus.BLOCKED,
+        command = call.command.orEmpty(),
+        note = reason ?: "Blocked by the safety policy.",
+    )
 
     fun declined(call: ToolCall): ToolResultContent = ToolResultContent(
         tool = call.name,

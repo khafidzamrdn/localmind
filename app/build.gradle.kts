@@ -13,8 +13,8 @@ android {
         applicationId = "com.localmind.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.3.0"
+        versionCode = 7
+        versionName = "0.4.0"
 
         ndk {
             // The bundled llama.cpp build is produced for 64-bit ARM only.

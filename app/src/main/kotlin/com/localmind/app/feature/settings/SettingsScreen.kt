@@ -403,8 +403,12 @@ fun SettingsScreen(
                 PolicyRow(
                     icon = Icons.Outlined.PlayArrow,
                     title = "Execute commands",
-                    summary = "Termux only · every command needs your approval",
-                    state = "approval",
+                    summary = if (settings.agentAutoReadOnly) {
+                        "Read-only steps auto-run; writes need approval"
+                    } else {
+                        "Termux only · every command needs your approval"
+                    },
+                    state = if (settings.agentAutoReadOnly) "smart" else "approval",
                     tone = extras.warning,
                 )
                 PolicyRow(
@@ -446,6 +450,33 @@ fun SettingsScreen(
                                 checked = settings.toolsEnabled,
                                 enabled = termuxStatus.ready || settings.toolsEnabled,
                                 onCheckedChange = viewModel::setToolsEnabled,
+                            )
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(start = 26.dp),
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Auto-run read-only commands",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = if (settings.agentAutoReadOnly) {
+                                        "ls, cat, grep, find, git status run without a tap. Writes still ask."
+                                    } else {
+                                        "Every command waits for your approval."
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = extras.mutedText,
+                                )
+                            }
+                            Switch(
+                                checked = settings.agentAutoReadOnly,
+                                enabled = settings.toolsEnabled,
+                                onCheckedChange = viewModel::setAgentAutoReadOnly,
                             )
                         }
                         Spacer(Modifier.height(8.dp))
@@ -494,11 +525,17 @@ fun SettingsScreen(
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = if (settings.toolsEnabled) {
-                        "On. The model may propose one Termux command per reply. Nothing runs until you tap " +
-                            "Run in the chat, and its output is added as a tool result."
+                        if (settings.agentAutoReadOnly) {
+                            "On. The model plans and runs up to 6 steps per request. Read-only commands run " +
+                                "automatically; anything that writes, installs, deletes or uses the network " +
+                                "still waits for your approval. Blocked commands never run."
+                        } else {
+                            "On. The model may propose one Termux command per reply. Every command waits " +
+                                "for your approval, and its output is added as a tool result."
+                        }
                     } else {
-                        "Off. The model is not told about any tool. Turn this on to let it propose Termux " +
-                            "commands; approval is still required for every command."
+                        "Off. The model is not told about any tool. Turn this on to let it plan Termux " +
+                            "commands; approval rules still apply."
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = extras.mutedText,
@@ -585,7 +622,7 @@ fun SettingsScreen(
         item(key = "about-title") { ScreenSectionTitle("About") }
         item(key = "about") {
             SettingsCard {
-                AboutRow("Version", "0.3.0 · Termux tools")
+                AboutRow("Version", "0.4.0 · Agent loop")
                 AboutRow("Package", "com.localmind.app")
                 AboutRow("Minimum Android", "10 (API 29)")
                 AboutRow("Data", "Stored on device only")

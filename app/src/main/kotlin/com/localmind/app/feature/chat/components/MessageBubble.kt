@@ -56,6 +56,8 @@ fun MessageBubble(
     toolCardState: ToolCardState = ToolCardState.Settled,
     onRunTool: (() -> Unit)? = null,
     onDeclineTool: (() -> Unit)? = null,
+    toolPolicyNote: String? = null,
+    toolBlocked: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     when (message.role) {
@@ -76,6 +78,8 @@ fun MessageBubble(
             toolCardState = toolCardState,
             onRunTool = onRunTool,
             onDeclineTool = onDeclineTool,
+            toolPolicyNote = toolPolicyNote,
+            toolBlocked = toolBlocked,
             modifier = modifier,
         )
     }
@@ -145,6 +149,8 @@ private fun AssistantBubble(
     toolCardState: ToolCardState,
     onRunTool: (() -> Unit)?,
     onDeclineTool: (() -> Unit)?,
+    toolPolicyNote: String?,
+    toolBlocked: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val extras = LocalMindExtras.current
@@ -208,6 +214,8 @@ private fun AssistantBubble(
                         state = toolCardState,
                         onRun = onRunTool,
                         onDecline = onDeclineTool,
+                        policyNote = toolPolicyNote,
+                        blocked = toolBlocked,
                     )
                 }
             }

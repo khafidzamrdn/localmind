@@ -65,6 +65,8 @@ fun ToolCallCard(
     state: ToolCardState,
     onRun: (() -> Unit)?,
     onDecline: (() -> Unit)?,
+    policyNote: String? = null,
+    blocked: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val extras = LocalMindExtras.current
@@ -91,13 +93,14 @@ fun ToolCallCard(
                 )
                 StatusPill(
                     text = when {
+                        blocked -> "blocked"
                         malformed -> "invalid"
                         state == ToolCardState.Running -> "running"
                         state == ToolCardState.Pending -> "approval"
                         else -> "proposed"
                     },
                     color = when {
-                        malformed -> MaterialTheme.colorScheme.error
+                        blocked || malformed -> MaterialTheme.colorScheme.error
                         state == ToolCardState.Running -> MaterialTheme.colorScheme.primary
                         state == ToolCardState.Pending -> extras.warning
                         else -> extras.mutedText
@@ -134,22 +137,36 @@ fun ToolCallCard(
 
                 when (state) {
                     ToolCardState.Pending -> {
+                        policyNote?.takeIf { it.isNotBlank() }?.let { note ->
+                            Spacer(Modifier.size(6.dp))
+                            Text(
+                                text = note,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (blocked) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    extras.mutedText
+                                },
+                            )
+                        }
                         Row(
                             modifier = Modifier.padding(top = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Button(
-                                onClick = { onRun?.invoke() },
-                                enabled = onRun != null,
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.PlayArrow,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(17.dp),
-                                )
-                                Spacer(Modifier.width(5.dp))
-                                Text("Run in Termux")
+                            if (!blocked) {
+                                Button(
+                                    onClick = { onRun?.invoke() },
+                                    enabled = onRun != null,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.PlayArrow,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(17.dp),
+                                    )
+                                    Spacer(Modifier.width(5.dp))
+                                    Text("Run in Termux")
+                                }
                             }
                             TextButton(
                                 onClick = { onDecline?.invoke() },
@@ -157,7 +174,11 @@ fun ToolCallCard(
                             ) { Text("Dismiss") }
                         }
                         Text(
-                            text = "Nothing runs until you approve. The output is added to this conversation.",
+                            text = if (blocked) {
+                                "Nothing runs. The model is told why and may choose a safer step."
+                            } else {
+                                "Nothing runs until you approve. The output is added to this conversation."
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = extras.mutedText,
                         )
@@ -207,6 +228,7 @@ fun ToolResultBubble(
     val pillColor = when (data?.status) {
         ToolStatus.OK -> MaterialTheme.colorScheme.secondary
         ToolStatus.DECLINED -> extras.mutedText
+        ToolStatus.BLOCKED -> MaterialTheme.colorScheme.error
         ToolStatus.TIMEOUT, ToolStatus.CANCELLED, ToolStatus.ERROR, null -> extras.warning
     }
 
@@ -238,6 +260,7 @@ fun ToolResultBubble(
                             ToolStatus.ERROR -> data.exitCode?.let { "exit $it" } ?: "failed"
                             ToolStatus.TIMEOUT -> "timeout"
                             ToolStatus.DECLINED -> "declined"
+                            ToolStatus.BLOCKED -> "blocked"
                             ToolStatus.CANCELLED -> "cancelled"
                             null -> "result"
                         },
@@ -282,12 +305,28 @@ fun ToolResultBubble(
                         color = extras.mutedText,
                     )
                 }
+                if (data.auto) {
+                    Spacer(Modifier.size(2.dp))
+                    Text(
+                        text = "Auto-approved read-only command.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 if (data.status == ToolStatus.DECLINED) {
                     Spacer(Modifier.size(2.dp))
                     Text(
                         text = "The model was told the command was not run.",
                         style = MaterialTheme.typography.labelSmall,
                         color = extras.mutedText,
+                    )
+                }
+                if (data.status == ToolStatus.BLOCKED) {
+                    Spacer(Modifier.size(2.dp))
+                    Text(
+                        text = "The command was blocked and nothing ran. The model was told why.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
                     )
                 }
 

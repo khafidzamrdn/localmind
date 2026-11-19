@@ -115,6 +115,10 @@ class SettingsViewModel(
         viewModelScope.launch { settingsRepository.setToolsEnabled(enabled) }
     }
 
+    fun setAgentAutoReadOnly(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setAgentAutoReadOnly(enabled) }
+    }
+
     fun refreshTermuxStatus() {
         _termuxStatus.value = termuxBridge.status()
     }

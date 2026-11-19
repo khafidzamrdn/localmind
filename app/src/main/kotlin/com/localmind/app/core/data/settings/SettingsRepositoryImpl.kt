@@ -76,6 +76,10 @@ class SettingsRepositoryImpl(
         context.settingsDataStore.edit { prefs -> prefs[Keys.AGENT_TOOLS_ENABLED] = enabled }
     }
 
+    override suspend fun setAgentAutoReadOnly(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[Keys.AGENT_AUTO_READ_ONLY] = enabled }
+    }
+
     private fun Preferences.toSettings(): AppSettings {
         val defaults = AppSettings()
         return AppSettings(
@@ -85,6 +89,7 @@ class SettingsRepositoryImpl(
             systemPrompt = this[Keys.SYSTEM_PROMPT] ?: defaults.systemPrompt,
             activeModelId = this[Keys.ACTIVE_MODEL],
             toolsEnabled = this[Keys.AGENT_TOOLS_ENABLED] ?: defaults.toolsEnabled,
+            agentAutoReadOnly = this[Keys.AGENT_AUTO_READ_ONLY] ?: defaults.agentAutoReadOnly,
             generation = GenerationParams(
                 temperature = (this[Keys.TEMPERATURE] ?: defaults.generation.temperature.toFloat()).toDouble(),
                 topP = (this[Keys.TOP_P] ?: defaults.generation.topP.toFloat()).toDouble(),
@@ -117,5 +122,6 @@ class SettingsRepositoryImpl(
         val GPU_ENABLED = booleanPreferencesKey("runtime_gpu_enabled")
         val LOW_MEMORY = booleanPreferencesKey("runtime_low_memory")
         val AGENT_TOOLS_ENABLED = booleanPreferencesKey("agent_tools_enabled")
+        val AGENT_AUTO_READ_ONLY = booleanPreferencesKey("agent_auto_read_only")
     }
 }

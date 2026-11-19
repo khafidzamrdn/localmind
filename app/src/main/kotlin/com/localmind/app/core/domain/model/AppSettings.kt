@@ -46,6 +46,12 @@ data class AppSettings(
      * switch never allows autonomous execution.
      */
     val toolsEnabled: Boolean = false,
+    /**
+     * Smart agent policy: read-only commands may run without a tap. Commands
+     * that change the system always need explicit approval, and blocked
+     * commands never run.
+     */
+    val agentAutoReadOnly: Boolean = true,
 ) {
     companion object {
         val DEFAULT_SYSTEM_PROMPT = """

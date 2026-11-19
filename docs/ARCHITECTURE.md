@@ -129,24 +129,27 @@ implements it against llama.cpp `v1.0.0`:
 Errors are converted to `InferenceEvent.Failed` with actionable text (out of memory, unsupported quantization,
 unseekable document, template failure).
 
-## Agent architecture (planned, not implemented)
+## Agent architecture (Termux tool)
 
-Milestone 3 will add, behind interfaces:
+The first agent slice is implemented behind `core/tool` and `core/termux`:
 
-- `ToolRegistry` — descriptors, JSON schemas, risk class.
-- Structured tool protocol parser with fallback for models without native tool calling.
-- `PermissionManager` — read-only / write / delete / execute / network policies, scoped to a workspace grant.
-- `AgentOrchestrator` — bounded iteration loop, timeout, cancellation, approval state.
-- Task panel fed by observable step events (no chain-of-thought exposure).
+- `ToolRegistry` — the single `termux_run` descriptor and the plan→act→observe system prompt.
+- `ToolCallParser` — structured `<tool_call>` parsing with a fallback for models without native tool calling.
+- `ToolResultCodec` — JSON results wrapped in `<tool_response>`, including `auto` and `blocked` states.
+- `CommandPolicy` — read-only allowlist, review-by-default for everything else, and a hard-block list.
+- `ChatViewModel` — bounded loop (6 commands), cancellation, approval state, duplicate and consecutive-failure
+  stops. It re-invokes the model after each result and only auto-runs `AUTO_READ` proposals.
+- In-chat step cards and result cards provide the audit trail; there is no hidden execution path.
 
-Tools will only accept a `WorkspaceGrant`; there is no unrestricted filesystem API in the design.
+`PermissionManager`, workspace-scoped file tools and the task panel remain planned. A future workspace grant
+will be required before file tools are added; there is still no unrestricted filesystem API in the design.
 
 ## Testing
 
 Pure logic is tested on the JVM: Markdown block parsing, inline spans, code highlighting, formatting/grouping,
-model metadata detection, GGUF parsing (synthetic files) and inference configuration defaults. 30 tests run with
-`:app:testDebugUnitTest`. Compose UI tests, Room migration instrumentation tests and native inference tests
-require a device/emulator and are not configured yet.
+model metadata detection, GGUF parsing (synthetic files), inference configuration defaults, the tool protocol
+and the command risk policy. 63 tests run with `:app:testDebugUnitTest`. Compose UI tests, Room migration
+instrumentation tests and native inference tests require a device/emulator and are not configured yet.
 
 ## Moving to multi-module
 

@@ -18,9 +18,11 @@ import com.localmind.app.core.domain.repository.ConversationRepository
 import com.localmind.app.core.domain.repository.ModelRepository
 import com.localmind.app.core.domain.repository.SettingsRepository
 import com.localmind.app.core.termux.TermuxBridge
+import com.localmind.app.core.tool.CommandPolicy
 import com.localmind.app.core.tool.ToolCallParser
 import com.localmind.app.core.tool.ToolRegistry
 import com.localmind.app.core.tool.ToolResultCodec
+import com.localmind.app.core.tool.ToolStatus
 import com.localmind.app.core.util.deriveConversationTitle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -65,6 +67,7 @@ class ChatViewModel(
     private val _toolRunning = MutableStateFlow(false)
     private val _status = MutableStateFlow(ChatStatus.Idle)
     private val _error = MutableStateFlow<String?>(null)
+    private val _agentStep = MutableStateFlow(0)
 
     val draft: StateFlow<String> = _draft.asStateFlow()
     val streamingText: StateFlow<String?> = _streamingText.asStateFlow()
@@ -72,6 +75,8 @@ class ChatViewModel(
     val toolRunning: StateFlow<Boolean> = _toolRunning.asStateFlow()
     val status: StateFlow<ChatStatus> = _status.asStateFlow()
     val error: StateFlow<String?> = _error.asStateFlow()
+    val agentStep: StateFlow<Int> = _agentStep.asStateFlow()
+    val agentMaxSteps: Int = MAX_AGENT_STEPS
 
     val activeConversationId: StateFlow<String?> = currentConversationId.asStateFlow()
 
@@ -105,6 +110,21 @@ class ChatViewModel(
     private var streamingBuffer = StringBuilder()
     private var completedNormally = false
 
+    // Agent-loop budget for the current user turn.
+    private var agentSteps = 0
+    private var consecutiveFailures = 0
+    private val executedCommands = mutableSetOf<String>()
+    private var agentTurnRunning = false
+
+    private fun resetAgentTurn() {
+        agentSteps = 0
+        consecutiveFailures = 0
+        executedCommands.clear()
+        _agentStep.value = 0
+    }
+
+    private fun busy(): Boolean = _isGenerating.value || _toolRunning.value || agentTurnRunning
+
     fun onDraftChange(value: String) {
         _draft.value = value
     }
@@ -116,6 +136,7 @@ class ChatViewModel(
     fun selectConversation(conversationId: String) {
         if (conversationId == currentConversationId.value) return
         cancelGeneration()
+        resetAgentTurn()
         currentConversationId.value = conversationId
         _streamingText.value = null
         _error.value = null
@@ -124,6 +145,7 @@ class ChatViewModel(
 
     fun newChat() {
         cancelGeneration()
+        resetAgentTurn()
         currentConversationId.value = null
         _draft.value = ""
         _streamingText.value = null
@@ -138,7 +160,7 @@ class ChatViewModel(
 
     fun sendDraft() {
         val text = _draft.value.trim()
-        if (text.isEmpty() || _isGenerating.value || _toolRunning.value) return
+        if (text.isEmpty() || busy()) return
         _draft.value = ""
         startUserTurn(text)
     }
@@ -146,7 +168,7 @@ class ChatViewModel(
     /** Sends [text] immediately; used by the empty-state suggestions. */
     fun sendMessage(text: String) {
         val trimmed = text.trim()
-        if (trimmed.isEmpty() || _isGenerating.value || _toolRunning.value) return
+        if (trimmed.isEmpty() || busy()) return
         _draft.value = ""
         startUserTurn(trimmed)
     }
@@ -154,20 +176,26 @@ class ChatViewModel(
     /** Regenerates the latest assistant reply for the active conversation. */
     fun regenerate() {
         val conversationId = currentConversationId.value ?: return
-        if (_isGenerating.value || _toolRunning.value) return
+        if (busy()) return
+        resetAgentTurn()
         generationJob = viewModelScope.launch {
-            val all = conversationRepository.getMessages(conversationId)
-            val lastUserIndex = all.indexOfLast { it.role == MessageRole.USER }
-            val lastAssistantIndex = all.indexOfLast { it.role == MessageRole.ASSISTANT }
-            if (lastUserIndex < 0) return@launch
-            if (lastAssistantIndex > lastUserIndex) {
-                val assistant = all[lastAssistantIndex]
-                // A tool result may follow the proposal; drop the whole branch
-                // so a regenerated call is not paired with an old result.
-                conversationRepository.deleteMessagesAfter(conversationId, assistant.id)
-                conversationRepository.deleteMessage(assistant.id)
+            agentTurnRunning = true
+            try {
+                val all = conversationRepository.getMessages(conversationId)
+                val lastUserIndex = all.indexOfLast { it.role == MessageRole.USER }
+                val lastAssistantIndex = all.indexOfLast { it.role == MessageRole.ASSISTANT }
+                if (lastUserIndex < 0) return@launch
+                if (lastAssistantIndex > lastUserIndex) {
+                    val assistant = all[lastAssistantIndex]
+                    // A tool result may follow the proposal; drop the whole branch
+                    // so a regenerated call is not paired with an old result.
+                    conversationRepository.deleteMessagesAfter(conversationId, assistant.id)
+                    conversationRepository.deleteMessage(assistant.id)
+                }
+                runAgentTurn(conversationId)
+            } finally {
+                agentTurnRunning = false
             }
-            generate(conversationId)
         }
     }
 
@@ -178,20 +206,26 @@ class ChatViewModel(
     fun editUserMessage(messageId: Long, newContent: String) {
         val trimmed = newContent.trim()
         val conversationId = currentConversationId.value ?: return
-        if (trimmed.isEmpty() || _isGenerating.value || _toolRunning.value) return
+        if (trimmed.isEmpty() || busy()) return
+        resetAgentTurn()
         generationJob = viewModelScope.launch {
-            conversationRepository.updateMessage(messageId, trimmed, MessageStatus.COMPLETE)
-            conversationRepository.deleteMessagesAfter(conversationId, messageId)
-            val remaining = conversationRepository.getMessages(conversationId)
-            if (remaining.firstOrNull()?.id == messageId) {
-                conversationRepository.touchConversation(
-                    conversationId,
-                    deriveConversationTitle(trimmed),
-                )
-            } else {
-                conversationRepository.touchConversation(conversationId)
+            agentTurnRunning = true
+            try {
+                conversationRepository.updateMessage(messageId, trimmed, MessageStatus.COMPLETE)
+                conversationRepository.deleteMessagesAfter(conversationId, messageId)
+                val remaining = conversationRepository.getMessages(conversationId)
+                if (remaining.firstOrNull()?.id == messageId) {
+                    conversationRepository.touchConversation(
+                        conversationId,
+                        deriveConversationTitle(trimmed),
+                    )
+                } else {
+                    conversationRepository.touchConversation(conversationId)
+                }
+                runAgentTurn(conversationId)
+            } finally {
+                agentTurnRunning = false
             }
-            generate(conversationId)
         }
     }
 
@@ -212,6 +246,7 @@ class ChatViewModel(
 
     fun deleteConversation(conversationId: String) {
         generationJob?.cancel()
+        resetAgentTurn()
         viewModelScope.launch {
             conversationRepository.deleteConversation(conversationId)
             if (currentConversationId.value == conversationId) {
@@ -238,74 +273,166 @@ class ChatViewModel(
     /**
      * Runs the tool call proposed by [messageId] after the user tapped Run.
      * Only the newest message can carry a pending call, and only one tool may
-     * run at a time.
+     * run at a time. After the result, read-only steps may continue on their
+     * own until the step budget or a command that needs approval is reached.
      */
     fun runToolCall(messageId: Long) {
         val conversationId = currentConversationId.value ?: return
-        if (_isGenerating.value || _toolRunning.value) return
+        if (busy()) return
         generationJob = viewModelScope.launch {
-            val all = conversationRepository.getMessages(conversationId)
-            val message = all.firstOrNull { it.id == messageId && it.role == MessageRole.ASSISTANT }
-                ?: return@launch
-            if (all.lastOrNull()?.id != messageId) return@launch
-            val call = ToolCallParser.split(message.content).call ?: return@launch
-            if (call.name != ToolRegistry.TERMUX_RUN) return@launch
-            if (call.command.isNullOrBlank()) return@launch
-
-            val modelId = settingsRepository.current().activeModelId
-            _toolRunning.value = true
-            _error.value = null
-            _status.value = ChatStatus.RunningTool
-
+            agentTurnRunning = true
             try {
-                val content = try {
-                    val result = termuxBridge.run(
-                        command = call.command.orEmpty(),
-                        timeoutMs = TERMUX_TOOL_TIMEOUT_MS,
-                        label = call.purpose ?: "LocalMind tool",
-                    )
-                    ToolResultCodec.encode(ToolResultCodec.fromRun(call, result))
-                } catch (cancelled: CancellationException) {
-                    withContext(NonCancellable) {
-                        if (conversationRepository.getConversation(conversationId) != null) {
-                            val partial = ToolResultCodec.encode(ToolResultCodec.cancelled(call))
-                            conversationRepository.addMessage(
-                                conversationId = conversationId,
-                                role = MessageRole.TOOL,
-                                content = partial,
-                                status = MessageStatus.STOPPED,
-                                modelId = modelId,
-                                tokenCount = com.localmind.app.core.inference.estimateTokens(partial),
-                            )
-                            conversationRepository.touchConversation(conversationId)
-                        }
-                    }
-                    throw cancelled
-                }
-
-                // The user may have deleted the chat while the command ran.
-                if (conversationRepository.getConversation(conversationId) == null) return@launch
-
-                conversationRepository.addMessage(
-                    conversationId = conversationId,
-                    role = MessageRole.TOOL,
-                    content = content,
-                    status = MessageStatus.COMPLETE,
-                    modelId = modelId,
-                    tokenCount = com.localmind.app.core.inference.estimateTokens(content),
-                )
-                conversationRepository.touchConversation(conversationId)
-                generate(conversationId)
+                if (!performToolCall(conversationId, messageId, auto = false)) return@launch
+                runAgentTurn(conversationId)
             } finally {
-                _toolRunning.value = false
+                agentTurnRunning = false
             }
         }
     }
 
+    /** Generates a reply, then auto-runs safe read-only steps until the budget ends. */
+    private suspend fun runAgentTurn(conversationId: String) {
+        while (true) {
+            generate(conversationId)
+            if (_status.value == ChatStatus.Error) return
+            val next = pendingAutoToolMessageId(conversationId) ?: return
+            if (!performToolCall(conversationId, next, auto = true)) return
+        }
+    }
+
+    /**
+     * Finds the newest assistant tool proposal when smart mode is active.
+     * The risk decision itself lives in [performToolCall].
+     */
+    private suspend fun pendingAutoToolMessageId(conversationId: String): Long? {
+        val config = settingsRepository.current()
+        if (!config.toolsEnabled || !config.agentAutoReadOnly) return null
+        if (!termuxBridge.status().ready) return null
+        val all = conversationRepository.getMessages(conversationId)
+        val last = all.lastOrNull() ?: return null
+        if (last.role != MessageRole.ASSISTANT) return null
+        val call = ToolCallParser.split(last.content).call ?: return null
+        if (call.name != ToolRegistry.TERMUX_RUN) return null
+        if (call.command.isNullOrBlank()) return null
+        return last.id
+    }
+
+    /**
+     * Executes (or refuses) one proposal. Returns false when the call cannot be
+     * handled in this mode, which leaves the card waiting for the user.
+     */
+    private suspend fun performToolCall(
+        conversationId: String,
+        messageId: Long,
+        auto: Boolean,
+    ): Boolean {
+        if (conversationRepository.getConversation(conversationId) == null) return false
+        val all = conversationRepository.getMessages(conversationId)
+        val message = all.firstOrNull { it.id == messageId && it.role == MessageRole.ASSISTANT }
+            ?: return false
+        if (all.lastOrNull()?.id != messageId) return false
+        val call = ToolCallParser.split(message.content).call ?: return false
+        if (call.name != ToolRegistry.TERMUX_RUN) return false
+        val command = call.command?.takeIf { it.isNotBlank() } ?: return false
+
+        val config = settingsRepository.current()
+        if (!config.toolsEnabled || !termuxBridge.status().ready) return false
+
+        val assessment = CommandPolicy.assess(command)
+        if (assessment.blocked) {
+            // A blocked call never executes, but the model is told why so it
+            // can choose a safer next step while the automatic loop runs.
+            if (!auto) return false
+            if (!canAutoContinue()) return false
+            agentSteps++
+            _agentStep.value = agentSteps.coerceAtMost(MAX_AGENT_STEPS)
+            val blocked = ToolResultCodec.encode(ToolResultCodec.blocked(call, assessment.reason))
+            addToolResult(conversationId, blocked, MessageStatus.COMPLETE, config.activeModelId)
+            return true
+        }
+
+        if (auto) {
+            if (!config.agentAutoReadOnly) return false
+            if (!canAutoContinue()) return false
+            if (!assessment.canAutoRun) return false
+            if (normalizeCommand(command) in executedCommands) return false
+        }
+
+        agentSteps++
+        _agentStep.value = agentSteps.coerceAtMost(MAX_AGENT_STEPS)
+        executedCommands += normalizeCommand(command)
+
+        val modelId = config.activeModelId
+        _toolRunning.value = true
+        _error.value = null
+        _status.value = ChatStatus.RunningTool
+
+        try {
+            val content = try {
+                val result = termuxBridge.run(
+                    command = command,
+                    timeoutMs = TERMUX_TOOL_TIMEOUT_MS,
+                    label = call.purpose ?: "LocalMind tool",
+                )
+                ToolResultCodec.encode(ToolResultCodec.fromRun(call, result, auto = auto))
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable) {
+                    if (conversationRepository.getConversation(conversationId) != null) {
+                        val partial = ToolResultCodec.encode(ToolResultCodec.cancelled(call))
+                        conversationRepository.addMessage(
+                            conversationId = conversationId,
+                            role = MessageRole.TOOL,
+                            content = partial,
+                            status = MessageStatus.STOPPED,
+                            modelId = modelId,
+                            tokenCount = com.localmind.app.core.inference.estimateTokens(partial),
+                        )
+                        conversationRepository.touchConversation(conversationId)
+                    }
+                }
+                throw cancelled
+            }
+
+            // The user may have deleted the chat while the command ran.
+            if (conversationRepository.getConversation(conversationId) == null) return false
+
+            val decoded = ToolResultCodec.decode(content)
+            consecutiveFailures = if (decoded?.status == ToolStatus.OK) 0 else consecutiveFailures + 1
+            addToolResult(conversationId, content, MessageStatus.COMPLETE, modelId)
+            return true
+        } finally {
+            _toolRunning.value = false
+            if (_status.value != ChatStatus.Error) _status.value = ChatStatus.Idle
+        }
+    }
+
+    private fun canAutoContinue(): Boolean =
+        agentSteps < MAX_AGENT_STEPS && consecutiveFailures < MAX_CONSECUTIVE_FAILURES
+
+    private suspend fun addToolResult(
+        conversationId: String,
+        content: String,
+        status: MessageStatus,
+        modelId: String?,
+    ) {
+        conversationRepository.addMessage(
+            conversationId = conversationId,
+            role = MessageRole.TOOL,
+            content = content,
+            status = status,
+            modelId = modelId,
+            tokenCount = com.localmind.app.core.inference.estimateTokens(content),
+        )
+        conversationRepository.touchConversation(conversationId)
+    }
+
+    private fun normalizeCommand(command: String): String =
+        command.trim().replace(Regex("\\s+"), " ")
+
     /** Records that the user declined the proposal so the card stops asking. */
     fun declineToolCall(messageId: Long) {
         val conversationId = currentConversationId.value ?: return
-        if (_isGenerating.value || _toolRunning.value) return
+        if (busy()) return
         viewModelScope.launch {
             val all = conversationRepository.getMessages(conversationId)
             val message = all.firstOrNull { it.id == messageId && it.role == MessageRole.ASSISTANT }
@@ -326,28 +453,35 @@ class ChatViewModel(
     }
 
     private fun startUserTurn(prompt: String) {
+        resetAgentTurn()
         generationJob = viewModelScope.launch {
-            val existingId = currentConversationId.value
-            val conversationId = existingId ?: run {
-                val created = conversationRepository.createConversation(
-                    title = deriveConversationTitle(prompt),
-                    modelId = settingsRepository.current().activeModelId,
-                )
-                currentConversationId.value = created.id
-                created.id
-            }
+            agentTurnRunning = true
+            try {
+                val existingId = currentConversationId.value
+                val conversationId = existingId ?: run {
+                    val created = conversationRepository.createConversation(
+                        title = deriveConversationTitle(prompt),
+                        modelId = settingsRepository.current().activeModelId,
+                    )
+                    currentConversationId.value = created.id
+                    created.id
+                }
 
-            conversationRepository.addMessage(
-                conversationId = conversationId,
-                role = MessageRole.USER,
-                content = prompt,
-            )
-            conversationRepository.touchConversation(conversationId)
-            generate(conversationId)
+                conversationRepository.addMessage(
+                    conversationId = conversationId,
+                    role = MessageRole.USER,
+                    content = prompt,
+                )
+                conversationRepository.touchConversation(conversationId)
+                runAgentTurn(conversationId)
+            } finally {
+                agentTurnRunning = false
+            }
         }
     }
 
     private suspend fun generate(conversationId: String) {
+        if (conversationRepository.getConversation(conversationId) == null) return
         _streamingText.value = ""
         _error.value = null
         _isGenerating.value = true
@@ -474,6 +608,7 @@ class ChatViewModel(
     private fun cancelGeneration() {
         generationJob?.cancel()
         generationJob = null
+        agentTurnRunning = false
         _isGenerating.value = false
         _toolRunning.value = false
         _streamingText.value = null
@@ -489,5 +624,7 @@ class ChatViewModel(
 
     companion object {
         const val TERMUX_TOOL_TIMEOUT_MS = 30_000L
+        const val MAX_AGENT_STEPS = 6
+        const val MAX_CONSECUTIVE_FAILURES = 2
     }
 }

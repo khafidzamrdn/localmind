@@ -22,4 +22,6 @@ interface SettingsRepository {
     suspend fun setActiveModel(modelId: String?)
 
     suspend fun setToolsEnabled(enabled: Boolean)
+
+    suspend fun setAgentAutoReadOnly(enabled: Boolean)
 }

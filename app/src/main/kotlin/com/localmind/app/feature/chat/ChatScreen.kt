@@ -68,6 +68,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.localmind.app.core.domain.model.ChatMessage
 import com.localmind.app.core.domain.model.MessageRole
 import com.localmind.app.core.inference.estimateTokens
+import com.localmind.app.core.tool.CommandPolicy
 import com.localmind.app.core.tool.ToolCallParser
 import com.localmind.app.core.ui.components.InfoBanner
 import com.localmind.app.core.ui.components.TextInputDialog
@@ -79,7 +80,9 @@ import com.localmind.app.feature.chat.components.MessageBubble
 import com.localmind.app.feature.chat.components.ModelPickerSheet
 import com.localmind.app.feature.chat.components.StreamingBubble
 import com.localmind.app.feature.chat.components.ToolCardState
-import kotlinx.coroutines.launch@Composable
+import kotlinx.coroutines.launch
+
+@Composable
 fun ChatScreen(
     viewModel: ChatViewModel,
     onManageModels: () -> Unit,
@@ -93,6 +96,7 @@ fun ChatScreen(
     val streamingText by viewModel.streamingText.collectAsStateWithLifecycle()
     val isGenerating by viewModel.isGenerating.collectAsStateWithLifecycle()
     val toolRunning by viewModel.toolRunning.collectAsStateWithLifecycle()
+    val agentStep by viewModel.agentStep.collectAsStateWithLifecycle()
     val status by viewModel.status.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val searchQuery by viewModel.search.collectAsStateWithLifecycle()
@@ -116,8 +120,16 @@ fun ChatScreen(
         ChatStatus.Idle -> "Ready"
         ChatStatus.LoadingModel -> "Loading model…"
         ChatStatus.Thinking -> "Thinking…"
-        ChatStatus.Generating -> "Generating…"
-        ChatStatus.RunningTool -> "Running tool…"
+        ChatStatus.Generating -> if (agentStep > 0) {
+            "Step $agentStep/${viewModel.agentMaxSteps}"
+        } else {
+            "Generating…"
+        }
+        ChatStatus.RunningTool -> if (agentStep > 0) {
+            "Step $agentStep/${viewModel.agentMaxSteps}"
+        } else {
+            "Running tool…"
+        }
         ChatStatus.Error -> "Error"
     }
     val statusColor = when (status) {
@@ -147,6 +159,27 @@ fun ChatScreen(
         }
     }
     val pendingToolMessageId = if (pendingToolCall != null) lastMessage?.id else null
+
+    val pendingAssessment = remember(pendingToolCall?.command) {
+        pendingToolCall?.command
+            ?.takeIf { it.isNotBlank() }
+            ?.let { CommandPolicy.assess(it) }
+    }
+    val pendingBlocked = pendingAssessment?.blocked == true
+    val pendingPolicyNote = pendingAssessment?.let { assessment ->
+        when (assessment.risk) {
+            CommandPolicy.Risk.AUTO_READ ->
+                if (settings.toolsEnabled && settings.agentAutoReadOnly) {
+                    "Read-only command. Smart mode runs this without a tap."
+                } else {
+                    "Read-only command. Auto-run is off, so approve it manually."
+                }
+            CommandPolicy.Risk.REVIEW ->
+                "This command can change files, packages, or network state, so it needs your approval."
+            CommandPolicy.Risk.BLOCKED ->
+                assessment.reason ?: "This command is blocked by the safety policy."
+        }
+    }
 
     LaunchedEffect(activeConversationId) {
         listState.scrollToItem(0)
@@ -270,7 +303,9 @@ fun ChatScreen(
                                     isGenerating -> ToolCardState.Settled
                                     else -> ToolCardState.Pending
                                 },
-                                onRunTool = if (isPendingTool && !isGenerating && !toolRunning) {
+                                onRunTool = if (
+                                    isPendingTool && !pendingBlocked && !isGenerating && !toolRunning
+                                ) {
                                     {
                                         viewModel.runToolCall(message.id)
                                         scope.launch { listState.animateScrollToItem(0) }
@@ -283,6 +318,8 @@ fun ChatScreen(
                                 } else {
                                     null
                                 },
+                                toolPolicyNote = if (isPendingTool) pendingPolicyNote else null,
+                                toolBlocked = isPendingTool && pendingBlocked,
                                 onRetry = {
                                     viewModel.regenerate()
                                     scope.launch { listState.animateScrollToItem(0) }
