@@ -20,4 +20,6 @@ interface SettingsRepository {
     suspend fun setRuntimeDefaults(defaults: RuntimeDefaults)
 
     suspend fun setActiveModel(modelId: String?)
+
+    suspend fun setToolsEnabled(enabled: Boolean)
 }

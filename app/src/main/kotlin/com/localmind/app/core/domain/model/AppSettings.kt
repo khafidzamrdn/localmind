@@ -40,6 +40,12 @@ data class AppSettings(
     val generation: GenerationParams = GenerationParams(),
     val runtime: RuntimeDefaults = RuntimeDefaults(),
     val activeModelId: String? = null,
+    /**
+     * When true the model is told about the Termux tool and may propose
+     * commands. Proposals still require an explicit approval in the chat; this
+     * switch never allows autonomous execution.
+     */
+    val toolsEnabled: Boolean = false,
 ) {
     companion object {
         val DEFAULT_SYSTEM_PROMPT = """

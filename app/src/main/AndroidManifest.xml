@@ -7,6 +7,18 @@
       explicitly opt-in remote backend in a later milestone.
     -->
 
+    <!--
+      Lets LocalMind hand explicit commands to Termux. The permission is granted
+      by the user from LocalMind's App Info page and Termux must also set
+      allow-external-apps=true. No command runs without the user tapping Run.
+    -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+
+    <!-- targetSdk 35 requires package visibility for the Termux bridge. -->
+    <queries>
+        <package android:name="com.termux" />
+    </queries>
+
     <application
         android:name=".LocalMindApplication"
         android:allowBackup="true"
@@ -28,6 +40,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          Receives the result bundle from Termux through the PendingIntent we
+          create for each execution. Not exported: only our own PendingIntent
+          can deliver to it.
+        -->
+        <receiver
+            android:name=".core.termux.TermuxResultReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

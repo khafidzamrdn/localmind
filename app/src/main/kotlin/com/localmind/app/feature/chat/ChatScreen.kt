@@ -66,7 +66,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.localmind.app.core.domain.model.ChatMessage
+import com.localmind.app.core.domain.model.MessageRole
 import com.localmind.app.core.inference.estimateTokens
+import com.localmind.app.core.tool.ToolCallParser
 import com.localmind.app.core.ui.components.InfoBanner
 import com.localmind.app.core.ui.components.TextInputDialog
 import com.localmind.app.core.ui.theme.LocalMindExtras
@@ -76,6 +78,7 @@ import com.localmind.app.feature.chat.components.ConversationDrawerContent
 import com.localmind.app.feature.chat.components.MessageBubble
 import com.localmind.app.feature.chat.components.ModelPickerSheet
 import com.localmind.app.feature.chat.components.StreamingBubble
+import com.localmind.app.feature.chat.components.ToolCardState
 import kotlinx.coroutines.launch@Composable
 fun ChatScreen(
     viewModel: ChatViewModel,
@@ -89,6 +92,7 @@ fun ChatScreen(
     val draft by viewModel.draft.collectAsStateWithLifecycle()
     val streamingText by viewModel.streamingText.collectAsStateWithLifecycle()
     val isGenerating by viewModel.isGenerating.collectAsStateWithLifecycle()
+    val toolRunning by viewModel.toolRunning.collectAsStateWithLifecycle()
     val status by viewModel.status.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val searchQuery by viewModel.search.collectAsStateWithLifecycle()
@@ -113,12 +117,13 @@ fun ChatScreen(
         ChatStatus.LoadingModel -> "Loading model…"
         ChatStatus.Thinking -> "Thinking…"
         ChatStatus.Generating -> "Generating…"
+        ChatStatus.RunningTool -> "Running tool…"
         ChatStatus.Error -> "Error"
     }
     val statusColor = when (status) {
         ChatStatus.Idle -> MaterialTheme.colorScheme.secondary
         ChatStatus.LoadingModel -> MaterialTheme.colorScheme.tertiary
-        ChatStatus.Thinking, ChatStatus.Generating -> MaterialTheme.colorScheme.primary
+        ChatStatus.Thinking, ChatStatus.Generating, ChatStatus.RunningTool -> MaterialTheme.colorScheme.primary
         ChatStatus.Error -> MaterialTheme.colorScheme.error
     }
 
@@ -130,8 +135,18 @@ fun ChatScreen(
     }
     val contextFraction = (contextUsed.toFloat() / contextLength.toFloat()).coerceIn(0f, 1f)
 
-    val lastAssistantId = messages.lastOrNull { !it.isUser }?.id
+    val lastAssistantId = messages.lastOrNull { it.role == MessageRole.ASSISTANT }?.id
     val lastUserId = messages.lastOrNull { it.isUser }?.id
+
+    val lastMessage = messages.lastOrNull()
+    val pendingToolCall = remember(lastMessage?.id, lastMessage?.content) {
+        if (lastMessage?.role == MessageRole.ASSISTANT) {
+            ToolCallParser.split(lastMessage.content).call
+        } else {
+            null
+        }
+    }
+    val pendingToolMessageId = if (pendingToolCall != null) lastMessage?.id else null
 
     LaunchedEffect(activeConversationId) {
         listState.scrollToItem(0)
@@ -243,11 +258,31 @@ fun ChatScreen(
                             }
                         }
                         items(messages.asReversed(), key = { it.id }) { message ->
+                            val isPendingTool = message.id == pendingToolMessageId
                             MessageBubble(
                                 message = message,
                                 modelLabel = if (message.isUser) null else modelLabel,
-                                canRetry = message.id == lastAssistantId && !isGenerating,
-                                canEdit = message.id == lastUserId && !isGenerating,
+                                canRetry = message.id == lastAssistantId && !isGenerating && !toolRunning,
+                                canEdit = message.id == lastUserId && !isGenerating && !toolRunning,
+                                toolCardState = when {
+                                    !isPendingTool -> ToolCardState.Settled
+                                    toolRunning -> ToolCardState.Running
+                                    isGenerating -> ToolCardState.Settled
+                                    else -> ToolCardState.Pending
+                                },
+                                onRunTool = if (isPendingTool && !isGenerating && !toolRunning) {
+                                    {
+                                        viewModel.runToolCall(message.id)
+                                        scope.launch { listState.animateScrollToItem(0) }
+                                    }
+                                } else {
+                                    null
+                                },
+                                onDeclineTool = if (isPendingTool && !isGenerating && !toolRunning) {
+                                    { viewModel.declineToolCall(message.id) }
+                                } else {
+                                    null
+                                },
                                 onRetry = {
                                     viewModel.regenerate()
                                     scope.launch { listState.animateScrollToItem(0) }
@@ -288,7 +323,7 @@ fun ChatScreen(
                     scope.launch { listState.animateScrollToItem(0) }
                 },
                 onStop = viewModel::stopGeneration,
-                isGenerating = isGenerating,
+                isGenerating = isGenerating || toolRunning,
                 modelLabel = modelLabel,
                 onModelClick = { showModelPicker = true },
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),

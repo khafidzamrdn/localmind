@@ -4,19 +4,21 @@ Local-first AI workspace for Android. LocalMind is a native Kotlin + Jetpack Com
 on-device models and, in later milestones, running an approval-gated coding agent against a user-granted
 project workspace.
 
-This repository currently contains **Milestone 2 — Local GGUF inference**. Chat, persistence, streaming UI,
-GGUF validation, model management and a bundled llama.cpp CPU backend are real. Agent tools and workspaces are
-not implemented yet and are clearly labeled in the app.
+This repository currently contains **Milestone 3 — Termux command tools**. Chat, persistence, streaming UI,
+GGUF validation, model management and a bundled llama.cpp CPU backend are real. The first agent tool is also
+real: the model may propose a shell command, but it only runs in Termux after you approve it. File, workspace
+and network tools are not implemented yet and are clearly labeled in the app.
 
 ## Status
 
 | Item | State |
 | --- | --- |
 | Debug APK | Built successfully (`app/build/outputs/apk/debug/app-debug.apk`) |
-| Unit tests | 30 passing (`:app:testDebugUnitTest`) |
+| Unit tests | 50 passing (`:app:testDebugUnitTest`) |
 | Minimum Android | 10 (API 29) |
 | Target SDK | 35 |
 | AI backend | llama.cpp `v1.0.0`, CPU, arm64-v8a (demo engine fallback) |
+| Termux tools | Opt-in, off by default; every command needs approval (**not yet verified on a device**) |
 | Network permission | **None** — the manifest has no `INTERNET` permission |
 
 See [docs/MILESTONE-2.md](docs/MILESTONE-2.md) for the latest build report and
@@ -41,13 +43,20 @@ See [docs/MILESTONE-2.md](docs/MILESTONE-2.md) for the latest build report and
   clearly labeled demo fallback when the native library or a loadable model is unavailable.
 - **Settings** persisted with DataStore: dark/light/system theme, system prompt, sampling parameters, context
   length, tool policy documentation, storage usage, delete all chats, backend status and about.
+- **Termux command tool (opt-in).** When enabled, the model is told about one tool and may propose a single
+  shell command in a `<tool_call>` block. The command is shown in a review card and **never runs automatically**;
+  tapping *Run in Termux* sends it through Termux's `RUN_COMMAND` service and the captured stdout/stderr/exit
+  code is added back as a tool result. Output is capped for context safety, the wait limit is 30 s, and the
+  result can be stopped, declined, or cancelled. A manual **Termux console** in Settings tests the same bridge
+  without a model in the loop.
 - **Projects tab** that documents the upcoming workspace model without pretending it exists.
 
 ## What is intentionally not implemented yet
 
 - GPU acceleration. The bundled llama.cpp build is CPU-only; the GPU row is disabled and says so.
 - Non-arm64 native builds. Only `arm64-v8a` is packaged; other ABIs use the demo engine.
-- Agent orchestrator, tool registry, permission prompts, agent task panel.
+- File read/write/delete tools, multi-step agent orchestration and an agent task panel. Only the Termux
+  command bridge exists today.
 - Workspace folder grants, file explorer, project indexing, context retrieval.
 - File attachments, conversation summarization, chat paging, message search.
 - Streaming persistence of partial tokens across process death (partial output is saved on stop, not per token).
@@ -137,6 +146,28 @@ See [docs/MODEL-IMPORT.md](docs/MODEL-IMPORT.md). Short version: open **Models �
 LocalMind validates the header without reading the weights, stores only metadata plus a persisted read grant, and
 loads the file on demand (first send, or the **Load** button). The file itself is never copied or deleted.
 
+## Termux tool setup
+
+LocalMind never executes a shell itself. Commands run under Termux's user after you approve them.
+
+1. Install Termux from F-Droid (package `com.termux`). Version **0.109 or newer** is required so stdout,
+   stderr and the exit code can be returned to LocalMind.
+2. Grant LocalMind *Run commands in Termux*: Android Settings → Apps → LocalMind → Permissions → Additional
+   permissions. The manifest requests `com.termux.permission.RUN_COMMAND`.
+3. Inside Termux run:
+
+   ```bash
+   echo 'allow-external-apps=true' >> ~/.termux/termux.properties
+   ```
+
+   Then force-stop and reopen Termux.
+4. Open **Settings → Agent & tool policy → Open Termux console** and run `echo ok` to confirm the bridge.
+5. Only then enable **Termux commands**, ask the model for something like "list my Termux home directory", and
+   approve the proposal with **Run in Termux**.
+
+The wait limit does not kill a command inside Termux; it only stops LocalMind waiting for the result. A failed
+permission or `allow-external-apps` check is reported as a setup hint in the result card.
+
 ## Privacy
 
 - Conversations and settings are stored locally in Room and DataStore.
@@ -148,7 +179,8 @@ loads the file on demand (first send, or the **Load** button). The file itself i
 1. **Foundation** — done.
 2. **Local inference** — done: llama.cpp CPU backend, GGUF validation, load/unload, memory checks, real
    streaming, backend configuration.
-3. **Agent core** — structured tool protocol, registry, permission engine, approval UI, task panel.
+3. **Agent core** — in progress: Termux command tool, parser, approval card and result loop shipped; file
+   tools, permission engine and task panel remain.
 4. **Workspace** — SAF folder grants, file explorer, project tree, context indexing.
 5. **Coding tools** — search/read/write/edit with diff previews and confirmations.
 6. **Advanced** — summarization, retrieval, paging, performance and UX polish.

@@ -37,6 +37,8 @@ import com.localmind.app.feature.models.ModelsViewModel
 import com.localmind.app.feature.projects.ProjectsScreen
 import com.localmind.app.feature.settings.SettingsScreen
 import com.localmind.app.feature.settings.SettingsViewModel
+import com.localmind.app.feature.termux.TermuxConsoleScreen
+import com.localmind.app.feature.termux.TermuxConsoleViewModel
 
 @Composable
 fun MainScreen() {
@@ -55,7 +57,8 @@ fun MainScreen() {
             ) {
                 Destination.entries.forEach { destination ->
                     NavigationBarItem(
-                        selected = currentRoute == destination.route,
+                        selected = currentRoute == destination.route ||
+                            (destination == Destination.Settings && currentRoute == TERMUX_CONSOLE_ROUTE),
                         onClick = { navController.navigateToTab(destination) },
                         icon = {
                             Icon(
@@ -97,6 +100,7 @@ fun MainScreen() {
                                 settingsRepository = app.container.settingsRepository,
                                 engine = app.container.inferenceEngine,
                                 controller = app.container.inferenceController,
+                                termuxBridge = app.container.termuxBridge,
                             )
                         }
                     }
@@ -142,6 +146,7 @@ fun MainScreen() {
                                 databaseFile = app.container.databaseFile,
                                 resourceEstimator = app.container.resourceEstimator,
                                 controller = app.container.inferenceController,
+                                termuxBridge = app.container.termuxBridge,
                             )
                         }
                     }
@@ -150,6 +155,22 @@ fun MainScreen() {
                 SettingsScreen(
                     viewModel = settingsViewModel,
                     onOpenModels = { navController.navigateToTab(Destination.Models) },
+                    onOpenTermux = { navController.navigate(TERMUX_CONSOLE_ROUTE) },
+                )
+            }
+
+            composable(TERMUX_CONSOLE_ROUTE) {
+                val factory = remember(app) {
+                    viewModelFactory {
+                        initializer {
+                            TermuxConsoleViewModel(bridge = app.container.termuxBridge)
+                        }
+                    }
+                }
+                val termuxViewModel: TermuxConsoleViewModel = viewModel(factory = factory)
+                TermuxConsoleScreen(
+                    viewModel = termuxViewModel,
+                    onBack = { navController.popBackStack() },
                 )
             }
         }
@@ -163,3 +184,5 @@ private fun NavHostController.navigateToTab(destination: Destination) {
         restoreState = true
     }
 }
+
+private const val TERMUX_CONSOLE_ROUTE = "termux-console"

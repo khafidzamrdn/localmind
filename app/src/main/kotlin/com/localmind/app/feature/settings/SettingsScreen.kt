@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -52,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.localmind.app.core.domain.model.AppSettings
 import com.localmind.app.core.domain.model.ThemeMode
+import com.localmind.app.core.tool.ToolRegistry
 import com.localmind.app.core.ui.components.ConfirmDialog
 import com.localmind.app.core.ui.components.InfoBanner
 import com.localmind.app.core.ui.components.ScreenHeader
@@ -65,12 +67,14 @@ import java.util.Locale
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onOpenModels: () -> Unit,
+    onOpenTermux: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val models by viewModel.models.collectAsStateWithLifecycle()
     val storageBytes by viewModel.storageBytes.collectAsStateWithLifecycle()
     val deviceMemory by viewModel.deviceMemory.collectAsStateWithLifecycle()
+    val termuxStatus by viewModel.termuxStatus.collectAsStateWithLifecycle()
 
     var promptDraft by remember(settings.systemPrompt) { mutableStateOf(settings.systemPrompt) }
     var confirmClearChats by remember { mutableStateOf(false) }
@@ -398,8 +402,8 @@ fun SettingsScreen(
                 )
                 PolicyRow(
                     icon = Icons.Outlined.PlayArrow,
-                    title = "Execute commands or tests",
-                    summary = "Only when a matching runtime is present",
+                    title = "Execute commands",
+                    summary = "Termux only · every command needs your approval",
                     state = "approval",
                     tone = extras.warning,
                 )
@@ -410,11 +414,100 @@ fun SettingsScreen(
                     state = "off",
                     tone = extras.mutedText,
                 )
+
+                Spacer(Modifier.height(12.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f),
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Outlined.Terminal,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Termux commands",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = ToolRegistry.TERMUX_RUN_SUMMARY,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = extras.mutedText,
+                                )
+                            }
+                            Switch(
+                                checked = settings.toolsEnabled,
+                                enabled = termuxStatus.ready || settings.toolsEnabled,
+                                onCheckedChange = viewModel::setToolsEnabled,
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        BackendRow(
+                            "Termux",
+                            termuxStatus.headline,
+                            when {
+                                termuxStatus.ready -> MaterialTheme.colorScheme.secondary
+                                termuxStatus.installed -> extras.warning
+                                else -> extras.mutedText
+                            },
+                        )
+                        BackendRow(
+                            "Version",
+                            termuxStatus.versionName ?: "—",
+                            if (termuxStatus.versionSupportsResults) {
+                                MaterialTheme.colorScheme.secondary
+                            } else {
+                                extras.warning
+                            },
+                        )
+                        BackendRow(
+                            "RUN_COMMAND permission",
+                            if (termuxStatus.permissionGranted) "Granted" else "Not granted",
+                            if (termuxStatus.permissionGranted) {
+                                MaterialTheme.colorScheme.secondary
+                            } else {
+                                extras.warning
+                            },
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(onClick = onOpenTermux) { Text("Open Termux console") }
+                        }
+                        if (!termuxStatus.ready) {
+                            Spacer(Modifier.height(6.dp))
+                            InfoBanner(
+                                icon = Icons.Outlined.Terminal,
+                                tone = extras.warning,
+                                text = termuxStatus.summary,
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = if (settings.toolsEnabled) {
+                        "On. The model may propose one Termux command per reply. Nothing runs until you tap " +
+                            "Run in the chat, and its output is added as a tool result."
+                    } else {
+                        "Off. The model is not told about any tool. Turn this on to let it propose Termux " +
+                            "commands; approval is still required for every command."
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = extras.mutedText,
+                )
                 Spacer(Modifier.height(8.dp))
                 InfoBanner(
                     icon = Icons.Outlined.Lock,
-                    text = "The policy is listed here for transparency. Tool execution and its enforcement ship in " +
-                        "Milestone 3; no tool can run in this build.",
+                    text = "File read/write, delete and network tools are not implemented yet. The policy above " +
+                        "describes the intended rules; only the Termux command bridge is active in this build.",
                 )
             }
         }
@@ -492,7 +585,7 @@ fun SettingsScreen(
         item(key = "about-title") { ScreenSectionTitle("About") }
         item(key = "about") {
             SettingsCard {
-                AboutRow("Version", "0.2.0 · Milestone 2")
+                AboutRow("Version", "0.3.0 · Termux tools")
                 AboutRow("Package", "com.localmind.app")
                 AboutRow("Minimum Android", "10 (API 29)")
                 AboutRow("Data", "Stored on device only")

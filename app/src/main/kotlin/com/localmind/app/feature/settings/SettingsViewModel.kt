@@ -14,6 +14,8 @@ import com.localmind.app.core.inference.DeviceCapabilities
 import com.localmind.app.core.inference.DeviceMemory
 import com.localmind.app.core.inference.LocalInferenceController
 import com.localmind.app.core.inference.ResourceEstimator
+import com.localmind.app.core.termux.TermuxBridge
+import com.localmind.app.core.termux.TermuxStatus
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +33,7 @@ class SettingsViewModel(
     private val databaseFile: File,
     private val resourceEstimator: ResourceEstimator,
     private val controller: LocalInferenceController,
+    private val termuxBridge: TermuxBridge,
 ) : ViewModel() {
 
     val settings: StateFlow<AppSettings> = settingsRepository.settings
@@ -44,6 +47,9 @@ class SettingsViewModel(
 
     private val _deviceMemory = MutableStateFlow(resourceEstimator.deviceMemory())
     val deviceMemory: StateFlow<DeviceMemory> = _deviceMemory.asStateFlow()
+
+    private val _termuxStatus = MutableStateFlow(termuxBridge.status())
+    val termuxStatus: StateFlow<TermuxStatus> = _termuxStatus.asStateFlow()
 
     val backendName: String = controller.backendName
     val backendIsDemo: Boolean = controller.isDemo
@@ -65,6 +71,7 @@ class SettingsViewModel(
 
     fun refreshStorage() {
         _deviceMemory.value = resourceEstimator.deviceMemory()
+        _termuxStatus.value = termuxBridge.status()
         viewModelScope.launch {
             _storageBytes.value = withContext(Dispatchers.IO) {
                 listOf(databaseFile, File("${databaseFile.path}-wal"), File("${databaseFile.path}-shm"))
@@ -103,6 +110,14 @@ class SettingsViewModel(
     fun setBatchSize(value: Int) = updateRuntime { it.copy(batchSize = value) }
 
     fun setLowMemory(enabled: Boolean) = updateRuntime { it.copy(lowMemory = enabled) }
+
+    fun setToolsEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.setToolsEnabled(enabled) }
+    }
+
+    fun refreshTermuxStatus() {
+        _termuxStatus.value = termuxBridge.status()
+    }
 
     fun clearAllChats() {
         viewModelScope.launch {

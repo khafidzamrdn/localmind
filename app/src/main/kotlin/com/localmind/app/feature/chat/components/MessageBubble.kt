@@ -36,7 +36,9 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.localmind.app.core.domain.model.ChatMessage
+import com.localmind.app.core.domain.model.MessageRole
 import com.localmind.app.core.domain.model.MessageStatus
+import com.localmind.app.core.tool.ToolCallParser
 import com.localmind.app.core.ui.components.MarkdownText
 import com.localmind.app.core.ui.components.MetaChip
 import com.localmind.app.core.ui.theme.LocalMindExtras
@@ -51,16 +53,29 @@ fun MessageBubble(
     canEdit: Boolean,
     onRetry: () -> Unit,
     onEdit: () -> Unit,
+    toolCardState: ToolCardState = ToolCardState.Settled,
+    onRunTool: (() -> Unit)? = null,
+    onDeclineTool: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    if (message.isUser) {
-        UserBubble(message = message, canEdit = canEdit, onEdit = onEdit, modifier = modifier)
-    } else {
-        AssistantBubble(
+    when (message.role) {
+        MessageRole.USER -> UserBubble(
+            message = message,
+            canEdit = canEdit,
+            onEdit = onEdit,
+            modifier = modifier,
+        )
+
+        MessageRole.TOOL -> ToolResultBubble(message = message, modifier = modifier)
+
+        else -> AssistantBubble(
             message = message,
             modelLabel = modelLabel,
             canRetry = canRetry,
             onRetry = onRetry,
+            toolCardState = toolCardState,
+            onRunTool = onRunTool,
+            onDeclineTool = onDeclineTool,
             modifier = modifier,
         )
     }
@@ -127,6 +142,9 @@ private fun AssistantBubble(
     modelLabel: String?,
     canRetry: Boolean,
     onRetry: () -> Unit,
+    toolCardState: ToolCardState,
+    onRunTool: (() -> Unit)?,
+    onDeclineTool: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val extras = LocalMindExtras.current
@@ -158,7 +176,8 @@ private fun AssistantBubble(
         }
         Spacer(Modifier.size(6.dp))
         val split = remember(message.content) { ThinkingParser.split(message.content) }
-        val visibleAnswer = split.answer
+        val toolSplit = remember(split.answer) { ToolCallParser.split(split.answer) }
+        val visibleAnswer = toolSplit.visibleText
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainer,
             shape = MaterialTheme.shapes.large,
@@ -177,8 +196,19 @@ private fun AssistantBubble(
                 }
                 if (visibleAnswer.isNotBlank()) {
                     MarkdownText(text = visibleAnswer)
-                } else if (!split.hasTags) {
+                } else if (!split.hasTags && !toolSplit.hasBlock) {
                     MarkdownText(text = message.content)
+                }
+                if (toolSplit.hasBlock) {
+                    if (visibleAnswer.isNotBlank() || split.hasReasoning) Spacer(Modifier.size(10.dp))
+                    ToolCallCard(
+                        call = toolSplit.call,
+                        rawBlock = toolSplit.rawBlock,
+                        malformed = toolSplit.call == null,
+                        state = toolCardState,
+                        onRun = onRunTool,
+                        onDecline = onDeclineTool,
+                    )
                 }
             }
         }
@@ -187,7 +217,7 @@ private fun AssistantBubble(
                 icon = if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy,
                 contentDescription = "Copy response",
                 onClick = {
-                    clipboard.setText(AnnotatedString(visibleAnswer.ifBlank { message.content }))
+                    clipboard.setText(AnnotatedString(visibleAnswer))
                     copied = true
                 },
             )
@@ -229,6 +259,7 @@ fun StreamingBubble(
         }
         Spacer(Modifier.size(6.dp))
         val split = remember(text) { ThinkingParser.split(text) }
+        val toolSplit = remember(split.answer) { ToolCallParser.split(split.answer) }
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainer,
             shape = MaterialTheme.shapes.large,
@@ -262,10 +293,18 @@ fun StreamingBubble(
                         )
                         if (split.answer.isNotBlank()) Spacer(Modifier.size(10.dp))
                     }
-                    if (split.answer.isNotBlank()) {
-                        MarkdownText(text = split.answer)
-                    } else if (!split.hasTags && text.isNotBlank()) {
+                    if (toolSplit.visibleText.isNotBlank()) {
+                        MarkdownText(text = toolSplit.visibleText)
+                    } else if (!split.hasTags && !toolSplit.hasBlock && text.isNotBlank()) {
                         MarkdownText(text = text)
+                    }
+                    if (toolSplit.hasBlock) {
+                        if (toolSplit.visibleText.isNotBlank()) Spacer(Modifier.size(8.dp))
+                        Text(
+                            text = "Preparing a Termux command…",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                     }
                 }
             }

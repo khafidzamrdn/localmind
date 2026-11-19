@@ -14,6 +14,7 @@ import com.localmind.app.core.inference.InferenceEngine
 import com.localmind.app.core.inference.LocalInferenceController
 import com.localmind.app.core.inference.ResourceEstimator
 import com.localmind.app.core.inference.llama.LlamaCppEngine
+import com.localmind.app.core.termux.TermuxBridge
 
 /**
  * Manual dependency container. Kept deliberately small and explicit so the
@@ -46,6 +47,8 @@ class AppContainer(context: Context) {
     }
 
     val resourceEstimator: ResourceEstimator by lazy { ResourceEstimator(appContext) }
+
+    val termuxBridge: TermuxBridge by lazy { TermuxBridge(appContext) }
 
     /**
      * llama.cpp is used when its shared library is packaged for the device

@@ -480,7 +480,10 @@ class LlamaCppEngine(
         MessageRole.USER -> "user"
         MessageRole.ASSISTANT -> "assistant"
         MessageRole.SYSTEM -> "system"
-        MessageRole.TOOL -> "tool"
+        // Tool results travel as user messages carrying a <tool_response>
+        // wrapper. That is the convention Qwen-style templates understand and
+        // it keeps templates without a native tool role working too.
+        MessageRole.TOOL -> "user"
     }
 
     companion object {

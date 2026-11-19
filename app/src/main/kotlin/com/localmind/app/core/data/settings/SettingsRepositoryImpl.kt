@@ -72,6 +72,10 @@ class SettingsRepositoryImpl(
         }
     }
 
+    override suspend fun setToolsEnabled(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs -> prefs[Keys.AGENT_TOOLS_ENABLED] = enabled }
+    }
+
     private fun Preferences.toSettings(): AppSettings {
         val defaults = AppSettings()
         return AppSettings(
@@ -80,6 +84,7 @@ class SettingsRepositoryImpl(
                 ?: defaults.themeMode,
             systemPrompt = this[Keys.SYSTEM_PROMPT] ?: defaults.systemPrompt,
             activeModelId = this[Keys.ACTIVE_MODEL],
+            toolsEnabled = this[Keys.AGENT_TOOLS_ENABLED] ?: defaults.toolsEnabled,
             generation = GenerationParams(
                 temperature = (this[Keys.TEMPERATURE] ?: defaults.generation.temperature.toFloat()).toDouble(),
                 topP = (this[Keys.TOP_P] ?: defaults.generation.topP.toFloat()).toDouble(),
@@ -111,8 +116,6 @@ class SettingsRepositoryImpl(
         val BATCH_SIZE = intPreferencesKey("runtime_batch_size")
         val GPU_ENABLED = booleanPreferencesKey("runtime_gpu_enabled")
         val LOW_MEMORY = booleanPreferencesKey("runtime_low_memory")
-
-        @Suppress("unused")
-        val RESERVED_FOR_AGENT_TOOLS = booleanPreferencesKey("agent_tools_enabled")
+        val AGENT_TOOLS_ENABLED = booleanPreferencesKey("agent_tools_enabled")
     }
 }
