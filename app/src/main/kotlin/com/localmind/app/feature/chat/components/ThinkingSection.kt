@@ -1,5 +1,8 @@
 package com.localmind.app.feature.chat.components
 
+import com.localmind.app.core.i18n.UiKey
+import com.localmind.app.core.i18n.t
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -80,7 +83,7 @@ fun ThinkingSection(
                 modifier = Modifier.size(14.dp),
             )
             Text(
-                text = if (streaming && !hasAnswer) "Thinking…" else "Thinking",
+                text = if (streaming && !hasAnswer) t(UiKey.chatThinking) else "Thinking",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),

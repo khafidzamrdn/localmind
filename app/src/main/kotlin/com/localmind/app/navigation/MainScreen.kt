@@ -30,6 +30,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.localmind.app.LocalMindApplication
+import com.localmind.app.core.i18n.t
 import com.localmind.app.feature.chat.ChatScreen
 import com.localmind.app.feature.chat.ChatViewModel
 import com.localmind.app.feature.models.ModelsScreen
@@ -63,10 +64,10 @@ fun MainScreen() {
                         icon = {
                             Icon(
                                 imageVector = destination.icon,
-                                contentDescription = destination.label,
+                                contentDescription = t(destination.labelKey),
                             )
                         },
-                        label = { Text(destination.label) },
+                        label = { Text(t(destination.labelKey)) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
                             selectedTextColor = MaterialTheme.colorScheme.onSurface,

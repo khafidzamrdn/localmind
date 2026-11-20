@@ -53,6 +53,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.localmind.app.core.domain.model.AppSettings
 import com.localmind.app.core.domain.model.ThemeMode
+import com.localmind.app.core.i18n.AppLanguage
+import com.localmind.app.core.i18n.UiKey
+import com.localmind.app.core.i18n.t
 import com.localmind.app.core.tool.ToolRegistry
 import com.localmind.app.core.ui.components.ConfirmDialog
 import com.localmind.app.core.ui.components.InfoBanner
@@ -93,17 +96,17 @@ fun SettingsScreen(
     ) {
         item(key = "header") {
             ScreenHeader(
-                title = "Settings",
-                subtitle = "Local defaults, generation and privacy",
+                title = t(UiKey.settingsTitle),
+                subtitle = t(UiKey.settingsSubtitle),
                 modifier = Modifier.padding(horizontal = 0.dp),
             )
         }
 
-        item(key = "appearance-title") { ScreenSectionTitle("Appearance") }
+        item(key = "appearance-title") { ScreenSectionTitle(t(UiKey.settingsAppearance)) }
         item(key = "appearance") {
             SettingsCard {
                 Text(
-                    text = "Theme",
+                    text = t(UiKey.settingsTheme),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -111,9 +114,9 @@ fun SettingsScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ThemeMode.entries.forEach { mode ->
                         val label = when (mode) {
-                            ThemeMode.DARK -> "Dark"
-                            ThemeMode.LIGHT -> "Light"
-                            ThemeMode.SYSTEM -> "System"
+                            ThemeMode.DARK -> t(UiKey.settingsThemeDark)
+                            ThemeMode.LIGHT -> t(UiKey.settingsThemeLight)
+                            ThemeMode.SYSTEM -> t(UiKey.settingsThemeSystem)
                         }
                         FilterChip(
                             selected = settings.themeMode == mode,
@@ -125,13 +128,37 @@ fun SettingsScreen(
             }
         }
 
-        item(key = "model-title") { ScreenSectionTitle("Model") }
+        item(key = "language-title") { ScreenSectionTitle(t(UiKey.settingsLanguage)) }
+        item(key = "language") {
+            SettingsCard {
+                Text(
+                    text = t(UiKey.settingsLanguageSummary),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AppLanguage.entries.forEach { language ->
+                        FilterChip(
+                            selected = settings.language == language,
+                            onClick = { viewModel.setLanguage(language) },
+                            label = { Text(language.nativeName) },
+                        )
+                    }
+                }
+            }
+        }
+
+        item(key = "model-title") { ScreenSectionTitle(t(UiKey.settingsModel)) }
         item(key = "model") {
             SettingsCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = activeModel?.displayName ?: "Demo engine",
+                            text = activeModel?.displayName ?: t(UiKey.chatDemoEngine),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
@@ -168,11 +195,11 @@ fun SettingsScreen(
             }
         }
 
-        item(key = "chat-title") { ScreenSectionTitle("Chat") }
+        item(key = "chat-title") { ScreenSectionTitle(t(UiKey.navChat)) }
         item(key = "chat") {
             SettingsCard {
                 Text(
-                    text = "System prompt",
+                    text = t(UiKey.settingsSystemPrompt),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -198,16 +225,16 @@ fun SettingsScreen(
                     TextButton(
                         onClick = { viewModel.setSystemPrompt(promptDraft) },
                         enabled = promptDraft.isNotBlank() && promptDraft != settings.systemPrompt,
-                    ) { Text("Save") }
+                    ) { Text(t(UiKey.actionSave)) }
                 }
             }
         }
 
-        item(key = "generation-title") { ScreenSectionTitle("Generation") }
+        item(key = "generation-title") { ScreenSectionTitle(t(UiKey.settingsGeneration)) }
         item(key = "generation") {
             SettingsCard {
                 SettingsSlider(
-                    label = "Temperature",
+                    label = t(UiKey.settingsTemperature),
                     value = settings.generation.temperature.toFloat(),
                     range = 0f..1.5f,
                     steps = 29,
@@ -231,7 +258,7 @@ fun SettingsScreen(
                     onValueChangeFinished = { viewModel.setTopK(it.toInt()) },
                 )
                 SettingsSlider(
-                    label = "Repeat penalty",
+                    label = t(UiKey.settingsRepeatPenalty),
                     value = settings.generation.repeatPenalty.toFloat(),
                     range = 1f..1.5f,
                     steps = 9,
@@ -239,7 +266,7 @@ fun SettingsScreen(
                     onValueChangeFinished = { viewModel.setRepeatPenalty(it.toDouble()) },
                 )
                 SettingsSlider(
-                    label = "Max tokens",
+                    label = t(UiKey.settingsMaxTokens),
                     value = settings.generation.maxTokens.toFloat(),
                     range = 128f..4096f,
                     steps = 30,
@@ -249,7 +276,7 @@ fun SettingsScreen(
             }
         }
 
-        item(key = "context-title") { ScreenSectionTitle("Context window") }
+        item(key = "context-title") { ScreenSectionTitle(t(UiKey.settingsContext)) }
         item(key = "context") {
             SettingsCard {
                 Text(
@@ -280,7 +307,7 @@ fun SettingsScreen(
             }
         }
 
-        item(key = "runtime-title") { ScreenSectionTitle("Runtime") }
+        item(key = "runtime-title") { ScreenSectionTitle(t(UiKey.settingsRuntime)) }
         item(key = "runtime") {
             SettingsCard {
                 BackendRow(
@@ -347,15 +374,15 @@ fun SettingsScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Low-memory profile",
+                            text = t(UiKey.settingsLowMemory),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Text(
                             text = if (settings.runtime.lowMemory) {
-                                "On · context capped at 2k, batch 256, max 4 threads"
+                                t(UiKey.settingsLowMemoryOn)
                             } else {
-                                "Off · uses each model's own context, batch and threads"
+                                t(UiKey.settingsLowMemoryOff)
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = extras.mutedText,
@@ -376,46 +403,46 @@ fun SettingsScreen(
             }
         }
 
-        item(key = "agent-title") { ScreenSectionTitle("Agent & tool policy") }
+        item(key = "agent-title") { ScreenSectionTitle(t(UiKey.settingsAgent)) }
         item(key = "agent") {
             SettingsCard {
                 PolicyRow(
                     icon = Icons.Outlined.Visibility,
-                    title = "Read workspace files",
-                    summary = "Allowed inside an explicitly granted folder",
-                    state = "read-only",
+                    title = t(UiKey.settingsReadWorkspace),
+                    summary = t(UiKey.settingsReadWorkspaceSummary),
+                    state = t(UiKey.settingsStateReadOnly),
                     tone = MaterialTheme.colorScheme.secondary,
                 )
                 PolicyRow(
                     icon = Icons.Outlined.Edit,
-                    title = "Write or edit files",
-                    summary = "Requires diff preview and approval",
-                    state = "approval",
+                    title = t(UiKey.settingsWriteWorkspace),
+                    summary = t(UiKey.settingsWriteWorkspaceSummary),
+                    state = t(UiKey.chatToolApproval),
                     tone = extras.warning,
                 )
                 PolicyRow(
                     icon = Icons.Outlined.Delete,
-                    title = "Delete files",
-                    summary = "Requires a dedicated confirmation",
+                    title = t(UiKey.settingsDeleteFiles),
+                    summary = t(UiKey.settingsDeleteFilesSummary),
                     state = "confirm",
                     tone = extras.warning,
                 )
                 PolicyRow(
                     icon = Icons.Outlined.PlayArrow,
-                    title = "Execute commands",
+                    title = t(UiKey.settingsExecute),
                     summary = if (settings.agentAutoReadOnly) {
-                        "Read-only steps auto-run; writes need approval"
+                        t(UiKey.settingsExecuteSmart)
                     } else {
-                        "Termux only · every command needs your approval"
+                        t(UiKey.settingsExecuteApproval)
                     },
-                    state = if (settings.agentAutoReadOnly) "smart" else "approval",
+                    state = if (settings.agentAutoReadOnly) t(UiKey.settingsStateSmart) else t(UiKey.chatToolApproval),
                     tone = extras.warning,
                 )
                 PolicyRow(
                     icon = Icons.Outlined.Public,
-                    title = "Network access",
-                    summary = "No INTERNET permission in this build",
-                    state = "off",
+                    title = t(UiKey.settingsNetwork),
+                    summary = t(UiKey.settingsNetworkSummary),
+                    state = t(UiKey.settingsStateOff),
                     tone = extras.mutedText,
                 )
 
@@ -436,7 +463,7 @@ fun SettingsScreen(
                             Spacer(Modifier.width(8.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Termux commands",
+                                    text = t(UiKey.settingsTermux),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurface,
                                 )
@@ -459,15 +486,15 @@ fun SettingsScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Auto-run read-only commands",
+                                    text = t(UiKey.settingsAutoReadOnly),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurface,
                                 )
                                 Text(
                                     text = if (settings.agentAutoReadOnly) {
-                                        "ls, cat, grep, find, git status run without a tap. Writes still ask."
+                                        t(UiKey.settingsAutoReadOnlyOn)
                                     } else {
-                                        "Every command waits for your approval."
+                                        t(UiKey.settingsAutoReadOnlyOff)
                                     },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = extras.mutedText,
@@ -481,7 +508,7 @@ fun SettingsScreen(
                         }
                         Spacer(Modifier.height(8.dp))
                         BackendRow(
-                            "Termux",
+                            t(UiKey.settingsTermuxStatus),
                             termuxStatus.headline,
                             when {
                                 termuxStatus.ready -> MaterialTheme.colorScheme.secondary
@@ -490,7 +517,7 @@ fun SettingsScreen(
                             },
                         )
                         BackendRow(
-                            "Version",
+                            t(UiKey.settingsVersion),
                             termuxStatus.versionName ?: "—",
                             if (termuxStatus.versionSupportsResults) {
                                 MaterialTheme.colorScheme.secondary
@@ -499,8 +526,8 @@ fun SettingsScreen(
                             },
                         )
                         BackendRow(
-                            "RUN_COMMAND permission",
-                            if (termuxStatus.permissionGranted) "Granted" else "Not granted",
+                            t(UiKey.settingsTermuxPermission),
+                            if (termuxStatus.permissionGranted) t(UiKey.commonGranted) else t(UiKey.commonNotGranted),
                             if (termuxStatus.permissionGranted) {
                                 MaterialTheme.colorScheme.secondary
                             } else {
@@ -509,7 +536,7 @@ fun SettingsScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            TextButton(onClick = onOpenTermux) { Text("Open Termux console") }
+                            TextButton(onClick = onOpenTermux) { Text(t(UiKey.settingsOpenTermux)) }
                         }
                         if (!termuxStatus.ready) {
                             Spacer(Modifier.height(6.dp))
@@ -549,7 +576,7 @@ fun SettingsScreen(
             }
         }
 
-        item(key = "storage-title") { ScreenSectionTitle("Storage") }
+        item(key = "storage-title") { ScreenSectionTitle(t(UiKey.settingsStorage)) }
         item(key = "storage") {
             SettingsCard {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -570,7 +597,7 @@ fun SettingsScreen(
                         colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
                             contentColor = MaterialTheme.colorScheme.error,
                         ),
-                    ) { Text("Delete all chats") }
+                    ) { Text(t(UiKey.settingsDeleteChats)) }
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -619,16 +646,16 @@ fun SettingsScreen(
             }
         }
 
-        item(key = "about-title") { ScreenSectionTitle("About") }
+        item(key = "about-title") { ScreenSectionTitle(t(UiKey.settingsAbout)) }
         item(key = "about") {
             SettingsCard {
-                AboutRow("Version", "0.4.0 · Agent loop")
-                AboutRow("Package", "com.localmind.app")
-                AboutRow("Minimum Android", "10 (API 29)")
-                AboutRow("Data", "Stored on device only")
+                AboutRow(t(UiKey.settingsVersion), "0.4.0 · Agent loop")
+                AboutRow(t(UiKey.settingsPackage), "com.localmind.app")
+                AboutRow(t(UiKey.settingsMinAndroid), "10 (API 29)")
+                AboutRow(t(UiKey.settingsData), t(UiKey.settingsDataValue))
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    text = "LocalMind is an offline-first local AI workspace. No analytics and no telemetry.",
+                    text = t(UiKey.settingsAboutBody),
                     style = MaterialTheme.typography.labelSmall,
                     color = extras.mutedText,
                 )
@@ -637,7 +664,7 @@ fun SettingsScreen(
 
         item(key = "footer") {
             Text(
-                text = "Demo responses are clearly labeled. Nothing is sent to a server.",
+                text = t(UiKey.settingsFooter),
                 style = MaterialTheme.typography.labelSmall,
                 color = extras.mutedText,
                 modifier = Modifier.padding(top = 8.dp, start = 4.dp),

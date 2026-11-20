@@ -1,5 +1,7 @@
 package com.localmind.app.core.domain.model
 
+import com.localmind.app.core.i18n.AppLanguage
+
 enum class ThemeMode {
     DARK,
     LIGHT,
@@ -36,6 +38,7 @@ data class RuntimeDefaults(
 
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.DARK,
+    val language: AppLanguage = AppLanguage.ENGLISH,
     val systemPrompt: String = DEFAULT_SYSTEM_PROMPT,
     val generation: GenerationParams = GenerationParams(),
     val runtime: RuntimeDefaults = RuntimeDefaults(),

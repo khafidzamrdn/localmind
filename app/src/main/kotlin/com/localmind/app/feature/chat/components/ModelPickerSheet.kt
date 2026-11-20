@@ -1,5 +1,8 @@
 package com.localmind.app.feature.chat.components
 
+import com.localmind.app.core.i18n.UiKey
+import com.localmind.app.core.i18n.t
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -83,8 +86,8 @@ fun ModelPickerSheet(
             }
 
             EngineRow(
-                title = "Demo engine",
-                subtitle = "Built in · streaming, stop, markdown",
+                title = t(UiKey.chatDemoEngine),
+                subtitle = t(UiKey.chatDemoEngineSubtitle),
                 selected = activeModelId == null,
                 onClick = {
                     onSelect(null)

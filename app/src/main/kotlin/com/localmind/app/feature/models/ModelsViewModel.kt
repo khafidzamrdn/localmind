@@ -1,5 +1,8 @@
 package com.localmind.app.feature.models
 
+import com.localmind.app.core.i18n.UiKey
+import com.localmind.app.core.i18n.t
+
 import android.content.ContentResolver
 import android.content.Intent
 import android.net.Uri
@@ -151,7 +154,7 @@ class ModelsViewModel(
                         } else {
                             initial.copy(
                                 validation = ModelValidation.INVALID,
-                                validationMessage = "Only .gguf files are supported.",
+                                validationMessage = t(UiKey.modelsOnlyGguf),
                             )
                         }
                         modelRepository.addModel(validated)
@@ -181,9 +184,9 @@ class ModelsViewModel(
             modelRepository.updateModel(validated)
             _validatingModelIds.value -= modelId
             _message.value = if (validated.validation == ModelValidation.HEADER_VALID) {
-                "GGUF header validated."
+                t(UiKey.modelsValidated)
             } else {
-                validated.validationMessage ?: "The model could not be validated."
+                validated.validationMessage ?: t(UiKey.modelsValidationFailed)
             }
         }
     }
@@ -201,11 +204,11 @@ class ModelsViewModel(
     fun requestLoad(modelId: String) {
         val model = models.value.firstOrNull { it.id == modelId } ?: return
         if (backendIsDemo) {
-            _message.value = "The native backend is not available on this device/build, so files cannot be loaded."
+            _message.value = t(UiKey.modelsNoNative)
             return
         }
         if (!model.isUsable) {
-            _message.value = model.validationMessage ?: "Validate this model before loading it."
+            _message.value = model.validationMessage ?: t(UiKey.modelsValidateFirst)
             return
         }
         val estimate = estimator.estimate(model, model.contextLength, model.batchSize)
@@ -233,7 +236,7 @@ class ModelsViewModel(
                     _message.value = "${model.displayName} loaded on ${controller.backendName}."
                 },
                 onFailure = { error ->
-                    _message.value = error.message ?: "The model failed to load."
+                    _message.value = error.message ?: t(UiKey.modelsLoadFailed)
                 },
             )
         }
@@ -242,7 +245,7 @@ class ModelsViewModel(
     fun unload() {
         viewModelScope.launch {
             controller.unload()
-            _message.value = "Model unloaded and memory released."
+            _message.value = t(UiKey.modelsUnloaded)
         }
     }
 
@@ -311,7 +314,7 @@ class ModelsViewModel(
             _message.value = if (loaded) {
                 "Configuration saved. Unload and load again to apply it."
             } else {
-                "Configuration saved."
+                t(UiKey.modelsConfigSaved)
             }
         }
     }
@@ -341,7 +344,7 @@ class ModelsViewModel(
             if (settings.value.activeModelId == modelId) {
                 settingsRepository.setActiveModel(null)
             }
-            _message.value = "Removed from library. The file on disk was not deleted."
+            _message.value = t(UiKey.modelsRemoved)
         }
     }
 

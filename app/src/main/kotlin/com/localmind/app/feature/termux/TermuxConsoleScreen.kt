@@ -1,5 +1,8 @@
 package com.localmind.app.feature.termux
 
+import com.localmind.app.core.i18n.UiKey
+import com.localmind.app.core.i18n.t
+
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -111,7 +114,7 @@ fun TermuxConsoleScreen(
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Termux console",
+                        text = t(UiKey.termuxTitle),
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -160,13 +163,13 @@ fun TermuxConsoleScreen(
                 Spacer(Modifier.height(8.dp))
                 StatusRow("Installed", if (status.installed) "Yes" else "No", status.installed)
                 StatusRow(
-                    label = "Version",
+                    label = t(UiKey.settingsVersion),
                     value = status.versionName ?: "—",
                     ok = status.versionSupportsResults,
                 )
                 StatusRow(
-                    label = "RUN_COMMAND permission",
-                    value = if (status.permissionGranted) "Granted" else "Not granted",
+                    label = t(UiKey.settingsTermuxPermission),
+                    value = if (status.permissionGranted) t(UiKey.commonGranted) else t(UiKey.commonNotGranted),
                     ok = status.permissionGranted,
                 )
                 Spacer(Modifier.height(8.dp))
@@ -177,7 +180,7 @@ fun TermuxConsoleScreen(
                     TextButton(onClick = { openAppInfo(context, context.packageName) }) {
                         Text("LocalMind permissions")
                     }
-                    TextButton(onClick = viewModel::refreshStatus) { Text("Refresh") }
+                    TextButton(onClick = viewModel::refreshStatus) { Text(t(UiKey.actionRefresh)) }
                 }
             }
         }
@@ -260,7 +263,7 @@ fun TermuxConsoleScreen(
                             modifier = Modifier.size(18.dp),
                         )
                         Spacer(Modifier.width(6.dp))
-                        Text(if (running) "Running…" else "Run command")
+                        Text(if (running) t(UiKey.termuxRunning) else "Run command")
                     }
                     Spacer(Modifier.width(8.dp))
                     if (result != null) {
@@ -351,7 +354,7 @@ private fun ResultCard(output: TermuxRunResult) {
                             modifier = Modifier.size(15.dp),
                         )
                         Spacer(Modifier.width(4.dp))
-                        Text("Copy")
+                        Text(t(UiKey.actionCopy))
                     }
                 }
                 if (output.stdout.isNotBlank()) {
@@ -378,7 +381,7 @@ private fun ResultCard(output: TermuxRunResult) {
             }
 
             is TermuxRunResult.Failed -> {
-                StatusPill("failed", MaterialTheme.colorScheme.error)
+                StatusPill(t(UiKey.chatToolFailed), MaterialTheme.colorScheme.error)
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = output.message,
@@ -396,7 +399,7 @@ private fun ResultCard(output: TermuxRunResult) {
             }
 
             is TermuxRunResult.TimedOut -> {
-                StatusPill("timeout", extras.warning)
+                StatusPill(t(UiKey.chatToolTimeout), extras.warning)
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = "LocalMind stopped waiting after ${output.timeoutMs / 1000} seconds.",

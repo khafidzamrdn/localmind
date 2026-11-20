@@ -14,6 +14,7 @@ import com.localmind.app.core.inference.DeviceCapabilities
 import com.localmind.app.core.inference.DeviceMemory
 import com.localmind.app.core.inference.LocalInferenceController
 import com.localmind.app.core.inference.ResourceEstimator
+import com.localmind.app.core.i18n.AppLanguage
 import com.localmind.app.core.termux.TermuxBridge
 import com.localmind.app.core.termux.TermuxStatus
 import java.io.File
@@ -83,6 +84,10 @@ class SettingsViewModel(
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { settingsRepository.setThemeMode(mode) }
+    }
+
+    fun setLanguage(language: AppLanguage) {
+        viewModelScope.launch { settingsRepository.setLanguage(language) }
     }
 
     fun setSystemPrompt(prompt: String) {

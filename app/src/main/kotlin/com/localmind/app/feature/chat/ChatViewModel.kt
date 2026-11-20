@@ -1,5 +1,8 @@
 package com.localmind.app.feature.chat
 
+import com.localmind.app.core.i18n.UiKey
+import com.localmind.app.core.i18n.t
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.localmind.app.core.domain.model.AppSettings
@@ -493,7 +496,7 @@ class ChatViewModel(
         val model = config.activeModelId?.let { modelRepository.getModel(it) }
 
         if (model == null && !engine.isDemo) {
-            _error.value = "No model is selected. Import a GGUF model in Models, then select and load it."
+            _error.value = t(UiKey.chatErrorNoModel)
             _status.value = ChatStatus.Error
             _isGenerating.value = false
             _streamingText.value = null
@@ -503,7 +506,7 @@ class ChatViewModel(
         if (model != null) {
             val loadResult = controller.ensureLoaded(model.id)
             if (loadResult.isFailure) {
-                _error.value = loadResult.exceptionOrNull()?.message ?: "The model could not be loaded."
+                _error.value = loadResult.exceptionOrNull()?.message ?: t(UiKey.chatErrorLoadFailed)
                 _status.value = ChatStatus.Error
                 _isGenerating.value = false
                 _streamingText.value = null
@@ -576,7 +579,7 @@ class ChatViewModel(
             throw cancelled
         } catch (error: Throwable) {
             _status.value = ChatStatus.Error
-            _error.value = error.message ?: "Generation failed unexpectedly."
+            _error.value = error.message ?: t(UiKey.chatErrorGeneration)
         } finally {
             if (!completedNormally) {
                 withContext(NonCancellable) {

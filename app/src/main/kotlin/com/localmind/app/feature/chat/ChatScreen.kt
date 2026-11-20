@@ -1,5 +1,8 @@
 package com.localmind.app.feature.chat
 
+import com.localmind.app.core.i18n.UiKey
+import com.localmind.app.core.i18n.t
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -117,20 +120,20 @@ fun ChatScreen(
         activeModel?.displayName ?: viewModel.engineDisplayName
     }
     val statusLabel = when (status) {
-        ChatStatus.Idle -> "Ready"
-        ChatStatus.LoadingModel -> "Loading model…"
-        ChatStatus.Thinking -> "Thinking…"
+        ChatStatus.Idle -> t(UiKey.commonReady)
+        ChatStatus.LoadingModel -> t(UiKey.chatLoadingModel)
+        ChatStatus.Thinking -> t(UiKey.chatThinking)
         ChatStatus.Generating -> if (agentStep > 0) {
             "Step $agentStep/${viewModel.agentMaxSteps}"
         } else {
-            "Generating…"
+            t(UiKey.chatGenerating)
         }
         ChatStatus.RunningTool -> if (agentStep > 0) {
             "Step $agentStep/${viewModel.agentMaxSteps}"
         } else {
-            "Running tool…"
+            t(UiKey.chatRunningTool)
         }
-        ChatStatus.Error -> "Error"
+        ChatStatus.Error -> t(UiKey.commonError)
     }
     val statusColor = when (status) {
         ChatStatus.Idle -> MaterialTheme.colorScheme.secondary
@@ -170,14 +173,14 @@ fun ChatScreen(
         when (assessment.risk) {
             CommandPolicy.Risk.AUTO_READ ->
                 if (settings.toolsEnabled && settings.agentAutoReadOnly) {
-                    "Read-only command. Smart mode runs this without a tap."
+                    t(UiKey.chatToolReadOnlyNote)
                 } else {
-                    "Read-only command. Auto-run is off, so approve it manually."
+                    t(UiKey.chatToolReadOnlyManual)
                 }
             CommandPolicy.Risk.REVIEW ->
-                "This command can change files, packages, or network state, so it needs your approval."
+                t(UiKey.chatToolReviewNote)
             CommandPolicy.Risk.BLOCKED ->
-                assessment.reason ?: "This command is blocked by the safety policy."
+                assessment.reason ?: t(UiKey.chatToolBlockedPolicy)
         }
     }
 
@@ -242,7 +245,7 @@ fun ChatScreen(
                 .statusBarsPadding(),
         ) {
             ChatHeader(
-                title = activeConversation?.title ?: "New chat",
+                title = activeConversation?.title ?: t(UiKey.actionNewChat),
                 modelLabel = modelLabel,
                 statusLabel = statusLabel,
                 statusColor = statusColor,
@@ -384,7 +387,7 @@ fun ChatScreen(
 
     editingMessage?.let { message ->
         TextInputDialog(
-            title = "Edit message",
+            title = t(UiKey.chatEditMessage),
             label = "Message",
             initialValue = message.content,
             confirmLabel = "Save & regenerate",
@@ -440,7 +443,7 @@ private fun ChatHeader(
             IconButton(onClick = onMenu) {
                 Icon(
                     imageVector = Icons.Outlined.Menu,
-                    contentDescription = "Open chat history",
+                    contentDescription = t(UiKey.chatOpenHistory),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -487,9 +490,9 @@ private fun ChatHeader(
                     Icon(
                         imageVector = Icons.Outlined.Lightbulb,
                         contentDescription = if (thinkingEnabled) {
-                            "Disable thinking mode"
+                            t(UiKey.chatThinkingDisable)
                         } else {
-                            "Enable thinking mode"
+                            t(UiKey.chatThinkingEnable)
                         },
                         tint = if (thinkingEnabled) {
                             MaterialTheme.colorScheme.primary
@@ -502,7 +505,7 @@ private fun ChatHeader(
             IconButton(onClick = onNewChat) {
                 Icon(
                     imageVector = Icons.Outlined.AddComment,
-                    contentDescription = "New chat",
+                    contentDescription = t(UiKey.actionNewChat),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -569,7 +572,7 @@ private fun ErrorBanner(
             )
             if (canRetry) {
                 TextButton(onClick = onRetry) {
-                    Text("Retry", color = MaterialTheme.colorScheme.onErrorContainer)
+                    Text(t(UiKey.actionRetry), color = MaterialTheme.colorScheme.onErrorContainer)
                 }
             }
             IconButton(onClick = onDismiss, modifier = Modifier.size(30.dp)) {

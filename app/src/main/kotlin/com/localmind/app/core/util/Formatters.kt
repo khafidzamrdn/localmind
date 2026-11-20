@@ -1,5 +1,8 @@
 package com.localmind.app.core.util
 
+import com.localmind.app.core.i18n.UiKey
+import com.localmind.app.core.i18n.t
+
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -29,7 +32,7 @@ fun deriveConversationTitle(text: String, maxLength: Int = 48): String {
     val firstLine = text.lineSequence()
         .map { it.trim() }
         .firstOrNull { it.isNotEmpty() }
-        ?: return "New chat"
+        ?: return t(UiKey.actionNewChat)
     val cleaned = firstLine
         .removePrefix("#")
         .trim()
@@ -41,12 +44,12 @@ fun deriveConversationTitle(text: String, maxLength: Int = 48): String {
     }
 }
 
-enum class ConversationGroup(val label: String) {
-    PINNED("Pinned"),
-    TODAY("Today"),
-    YESTERDAY("Yesterday"),
-    PREVIOUS_7_DAYS("Previous 7 days"),
-    OLDER("Older"),
+enum class ConversationGroup(val labelKey: UiKey) {
+    PINNED(UiKey.chatPinned),
+    TODAY(UiKey.chatToday),
+    YESTERDAY(UiKey.chatYesterday),
+    PREVIOUS_7_DAYS(UiKey.chatPrevious7),
+    OLDER(UiKey.chatOlder),
 }
 
 /**

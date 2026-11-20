@@ -1,5 +1,8 @@
 package com.localmind.app.feature.chat.components
 
+import com.localmind.app.core.i18n.UiKey
+import com.localmind.app.core.i18n.t
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -124,7 +127,7 @@ private fun UserBubble(
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 SmallAction(
                     icon = if (copied) Icons.Outlined.Check else Icons.Outlined.ContentCopy,
-                    contentDescription = "Copy message",
+                    contentDescription = t(UiKey.chatCopyMessage),
                     onClick = {
                         clipboard.setText(AnnotatedString(message.content))
                         copied = true
@@ -132,7 +135,7 @@ private fun UserBubble(
                 )
                 SmallAction(
                     icon = Icons.Outlined.Edit,
-                    contentDescription = "Edit message",
+                    contentDescription = t(UiKey.chatEditMessage),
                     onClick = onEdit,
                 )
             }
@@ -175,9 +178,9 @@ private fun AssistantBubble(
                 color = extras.mutedText,
             )
             if (message.status == MessageStatus.STOPPED) {
-                MetaChip("stopped")
+                MetaChip(t(UiKey.chatStopped))
             } else if (message.status == MessageStatus.ERROR) {
-                MetaChip("incomplete", tint = MaterialTheme.colorScheme.error)
+                MetaChip(t(UiKey.chatIncomplete), tint = MaterialTheme.colorScheme.error)
             }
         }
         Spacer(Modifier.size(6.dp))

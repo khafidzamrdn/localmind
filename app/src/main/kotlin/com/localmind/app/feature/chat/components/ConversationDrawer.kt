@@ -1,5 +1,8 @@
 package com.localmind.app.feature.chat.components
 
+import com.localmind.app.core.i18n.UiKey
+import com.localmind.app.core.i18n.t
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -98,7 +101,7 @@ fun ConversationDrawerContent(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "Local AI workspace",
+                    text = t(UiKey.chatAppTagline),
                     style = MaterialTheme.typography.labelSmall,
                     color = extras.mutedText,
                 )
@@ -118,7 +121,7 @@ fun ConversationDrawerContent(
         ) {
             Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("New chat")
+            Text(t(UiKey.actionNewChat))
         }
         Spacer(Modifier.height(12.dp))
 
@@ -151,7 +154,7 @@ fun ConversationDrawerContent(
                 if (groupItems.isNotEmpty()) {
                     item(key = "header_${group.name}") {
                         Text(
-                            text = group.label,
+                            text = t(group.labelKey),
                             style = MaterialTheme.typography.labelSmall,
                             color = extras.mutedText,
                             modifier = Modifier.padding(start = 6.dp, top = 14.dp, bottom = 4.dp),
@@ -187,9 +190,9 @@ fun ConversationDrawerContent(
     renameTarget?.let { conversation ->
         TextInputDialog(
             title = "Rename conversation",
-            label = "Title",
+            label = t(UiKey.chatTitleLabel),
             initialValue = conversation.title,
-            confirmLabel = "Save",
+            confirmLabel = t(UiKey.actionSave),
             onConfirm = { onRename(conversation, it) },
             onDismiss = { renameTarget = null },
         )
@@ -199,7 +202,7 @@ fun ConversationDrawerContent(
         ConfirmDialog(
             title = "Delete conversation?",
             message = "\"${conversation.title}\" and its messages will be removed from this device. The model files are not affected.",
-            confirmLabel = "Delete",
+            confirmLabel = t(UiKey.actionDelete),
             destructive = true,
             onConfirm = { onDelete(conversation) },
             onDismiss = { deleteTarget = null },
@@ -250,7 +253,7 @@ private fun ConversationRow(
                     if (conversation.pinned) {
                         Icon(
                             imageVector = Icons.Outlined.PushPin,
-                            contentDescription = "Pinned",
+                            contentDescription = t(UiKey.chatPinned),
                             tint = extras.mutedText,
                             modifier = Modifier.size(10.dp),
                         )
@@ -276,7 +279,7 @@ private fun ConversationRow(
                     onDismissRequest = { menuOpen = false },
                 ) {
                     DropdownMenuItem(
-                        text = { Text("Rename") },
+                        text = { Text(t(UiKey.actionRename)) },
                         leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
                         onClick = {
                             menuOpen = false
@@ -284,7 +287,7 @@ private fun ConversationRow(
                         },
                     )
                     DropdownMenuItem(
-                        text = { Text(if (conversation.pinned) "Unpin" else "Pin") },
+                        text = { Text(if (conversation.pinned) t(UiKey.chatUnpin) else t(UiKey.chatPin)) },
                         leadingIcon = { Icon(Icons.Outlined.PushPin, contentDescription = null) },
                         onClick = {
                             menuOpen = false
@@ -292,7 +295,7 @@ private fun ConversationRow(
                         },
                     )
                     DropdownMenuItem(
-                        text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                        text = { Text(t(UiKey.actionDelete), color = MaterialTheme.colorScheme.error) },
                         leadingIcon = {
                             Icon(
                                 Icons.Outlined.Delete,

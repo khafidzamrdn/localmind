@@ -1,5 +1,8 @@
 package com.localmind.app.feature.projects
 
+import com.localmind.app.core.i18n.UiKey
+import com.localmind.app.core.i18n.t
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -67,7 +70,7 @@ fun ProjectsScreen(modifier: Modifier = Modifier) {
         ),
         RoadmapItem(
             stage = "M4",
-            title = "Workspace",
+            title = t(UiKey.projectsWorkspace),
             description = "SAF folder picker, persisted grants, file explorer and project tree.",
             state = "planned",
             tone = extras.mutedText,
@@ -92,7 +95,7 @@ fun ProjectsScreen(modifier: Modifier = Modifier) {
     ) {
         item(key = "header") {
             ScreenHeader(
-                title = "Projects",
+                title = t(UiKey.navProjects),
                 subtitle = "Workspace-scoped context for coding tasks",
                 modifier = Modifier.padding(horizontal = 0.dp),
             )
@@ -100,7 +103,7 @@ fun ProjectsScreen(modifier: Modifier = Modifier) {
         item(key = "empty") {
             EmptyState(
                 icon = Icons.Outlined.Folder,
-                title = "No workspace yet",
+                title = t(UiKey.projectsNoWorkspaceTitle),
                 body = "Projects let the assistant read and modify files inside a folder you explicitly grant. " +
                     "Workspace access is scoped; LocalMind will never scan your whole device.",
                 modifier = Modifier.padding(top = 26.dp, bottom = 10.dp),

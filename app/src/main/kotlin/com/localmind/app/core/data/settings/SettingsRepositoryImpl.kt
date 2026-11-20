@@ -14,6 +14,7 @@ import com.localmind.app.core.domain.model.GenerationParams
 import com.localmind.app.core.domain.model.RuntimeDefaults
 import com.localmind.app.core.domain.model.ThemeMode
 import com.localmind.app.core.domain.repository.SettingsRepository
+import com.localmind.app.core.i18n.AppLanguage
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -36,6 +37,10 @@ class SettingsRepositoryImpl(
 
     override suspend fun setThemeMode(mode: ThemeMode) {
         context.settingsDataStore.edit { it[Keys.THEME] = mode.name }
+    }
+
+    override suspend fun setLanguage(language: AppLanguage) {
+        context.settingsDataStore.edit { it[Keys.LANGUAGE] = language.code }
     }
 
     override suspend fun setSystemPrompt(prompt: String) {
@@ -86,6 +91,9 @@ class SettingsRepositoryImpl(
             themeMode = this[Keys.THEME]
                 ?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
                 ?: defaults.themeMode,
+            language = this[Keys.LANGUAGE]
+                ?.let { AppLanguage.from(it) }
+                ?: defaults.language,
             systemPrompt = this[Keys.SYSTEM_PROMPT] ?: defaults.systemPrompt,
             activeModelId = this[Keys.ACTIVE_MODEL],
             toolsEnabled = this[Keys.AGENT_TOOLS_ENABLED] ?: defaults.toolsEnabled,
@@ -109,6 +117,7 @@ class SettingsRepositoryImpl(
 
     private object Keys {
         val THEME = stringPreferencesKey("theme_mode")
+        val LANGUAGE = stringPreferencesKey("app_language")
         val SYSTEM_PROMPT = stringPreferencesKey("system_prompt")
         val ACTIVE_MODEL = stringPreferencesKey("active_model_id")
         val TEMPERATURE = floatPreferencesKey("temperature")

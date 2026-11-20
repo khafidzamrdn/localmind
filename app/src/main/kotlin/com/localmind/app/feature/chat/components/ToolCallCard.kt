@@ -1,5 +1,8 @@
 package com.localmind.app.feature.chat.components
 
+import com.localmind.app.core.i18n.UiKey
+import com.localmind.app.core.i18n.t
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -86,18 +89,18 @@ fun ToolCallCard(
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    text = "Termux command",
+                    text = t(UiKey.chatToolCommand),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
                 StatusPill(
                     text = when {
-                        blocked -> "blocked"
-                        malformed -> "invalid"
-                        state == ToolCardState.Running -> "running"
-                        state == ToolCardState.Pending -> "approval"
-                        else -> "proposed"
+                        blocked -> t(UiKey.chatToolBlocked)
+                        malformed -> t(UiKey.chatToolInvalid)
+                        state == ToolCardState.Running -> t(UiKey.chatToolRunning)
+                        state == ToolCardState.Pending -> t(UiKey.chatToolApproval)
+                        else -> t(UiKey.chatToolProposed)
                     },
                     color = when {
                         blocked || malformed -> MaterialTheme.colorScheme.error
@@ -111,7 +114,7 @@ fun ToolCallCard(
             if (call == null) {
                 Spacer(Modifier.size(6.dp))
                 Text(
-                    text = "The model produced a tool call that could not be read, so it cannot run.",
+                    text = t(UiKey.chatToolInvalidExplain),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -165,19 +168,19 @@ fun ToolCallCard(
                                         modifier = Modifier.size(17.dp),
                                     )
                                     Spacer(Modifier.width(5.dp))
-                                    Text("Run in Termux")
+                                    Text(t(UiKey.chatToolRun))
                                 }
                             }
                             TextButton(
                                 onClick = { onDecline?.invoke() },
                                 enabled = onDecline != null,
-                            ) { Text("Dismiss") }
+                            ) { Text(t(UiKey.actionDismiss)) }
                         }
                         Text(
                             text = if (blocked) {
-                                "Nothing runs. The model is told why and may choose a safer step."
+                                t(UiKey.chatToolBlockedNote)
                             } else {
-                                "Nothing runs until you approve. The output is added to this conversation."
+                                t(UiKey.chatToolApprovalNote)
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = extras.mutedText,
@@ -249,7 +252,7 @@ fun ToolResultBubble(
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = "Termux result",
+                        text = t(UiKey.chatToolResult),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
@@ -257,11 +260,11 @@ fun ToolResultBubble(
                     StatusPill(
                         text = when (data?.status) {
                             ToolStatus.OK -> "exit ${data.exitCode ?: 0}"
-                            ToolStatus.ERROR -> data.exitCode?.let { "exit $it" } ?: "failed"
-                            ToolStatus.TIMEOUT -> "timeout"
-                            ToolStatus.DECLINED -> "declined"
-                            ToolStatus.BLOCKED -> "blocked"
-                            ToolStatus.CANCELLED -> "cancelled"
+                            ToolStatus.ERROR -> data.exitCode?.let { "exit $it" } ?: t(UiKey.chatToolFailed)
+                            ToolStatus.TIMEOUT -> t(UiKey.chatToolTimeout)
+                            ToolStatus.DECLINED -> t(UiKey.chatToolDeclined)
+                            ToolStatus.BLOCKED -> t(UiKey.chatToolBlocked)
+                            ToolStatus.CANCELLED -> t(UiKey.chatToolCancelled)
                             null -> "result"
                         },
                         color = pillColor,
@@ -308,7 +311,7 @@ fun ToolResultBubble(
                 if (data.auto) {
                     Spacer(Modifier.size(2.dp))
                     Text(
-                        text = "Auto-approved read-only command.",
+                        text = t(UiKey.chatToolAutoApproved),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -316,7 +319,7 @@ fun ToolResultBubble(
                 if (data.status == ToolStatus.DECLINED) {
                     Spacer(Modifier.size(2.dp))
                     Text(
-                        text = "The model was told the command was not run.",
+                        text = t(UiKey.chatToolDeclinedExplain),
                         style = MaterialTheme.typography.labelSmall,
                         color = extras.mutedText,
                     )
@@ -324,7 +327,7 @@ fun ToolResultBubble(
                 if (data.status == ToolStatus.BLOCKED) {
                     Spacer(Modifier.size(2.dp))
                     Text(
-                        text = "The command was blocked and nothing ran. The model was told why.",
+                        text = t(UiKey.chatToolBlockedExplain),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -350,7 +353,7 @@ fun ToolResultBubble(
                             modifier = Modifier.size(14.dp),
                         )
                         Spacer(Modifier.width(4.dp))
-                        Text(if (copied) "Copied" else "Copy output")
+                        Text(if (copied) t(UiKey.chatToolCopied) else t(UiKey.chatToolCopyOutput))
                     }
                 }
             }

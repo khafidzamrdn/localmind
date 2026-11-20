@@ -1,5 +1,8 @@
 package com.localmind.app.feature.chat.components
 
+import com.localmind.app.core.i18n.UiKey
+import com.localmind.app.core.i18n.t
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -67,7 +70,7 @@ fun ChatComposer(
                     Box(contentAlignment = Alignment.CenterStart) {
                         if (value.isEmpty()) {
                             Text(
-                                text = "Message LocalMind…",
+                                text = t(UiKey.chatInputPlaceholder),
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = extras.mutedText,
                             )
@@ -115,7 +118,7 @@ fun ChatComposer(
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Stop,
-                            contentDescription = "Stop generating",
+                            contentDescription = t(UiKey.actionStop),
                             modifier = Modifier.size(18.dp),
                         )
                     }
@@ -131,7 +134,7 @@ fun ChatComposer(
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.ArrowUpward,
-                            contentDescription = "Send message",
+                            contentDescription = t(UiKey.actionSend),
                             modifier = Modifier.size(19.dp),
                         )
                     }

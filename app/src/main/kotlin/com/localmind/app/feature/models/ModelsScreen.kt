@@ -1,5 +1,8 @@
 package com.localmind.app.feature.models
 
+import com.localmind.app.core.i18n.UiKey
+import com.localmind.app.core.i18n.t
+
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -127,7 +130,7 @@ fun ModelsScreen(
                 .fillMaxSize(),
         ) {
             ScreenHeader(
-                title = "Models",
+                title = t(UiKey.navModels),
                 subtitle = "Local GGUF library · ${viewModel.backendName}",
                 actions = {
                     FilledTonalButton(
@@ -188,7 +191,7 @@ fun ModelsScreen(
                     item(key = "empty") {
                         EmptyState(
                             icon = Icons.Outlined.Memory,
-                            title = "No models yet",
+                            title = t(UiKey.modelsEmptyTitle),
                             body = "Import a .gguf file from device storage. LocalMind keeps only metadata and a " +
                                 "persisted read permission.",
                             modifier = Modifier.padding(top = 40.dp),
@@ -209,7 +212,7 @@ fun ModelsScreen(
                     }
                 } else {
                     item(key = "section") {
-                        ScreenSectionTitle("Library", modifier = Modifier.fillMaxWidth())
+                        ScreenSectionTitle(t(UiKey.modelsLibrary), modifier = Modifier.fillMaxWidth())
                     }
                     items(models, key = { it.id }) { model ->
                         val loaded = (runtimeState as? ModelRuntimeState.Loaded)?.modelId == model.id
@@ -472,7 +475,7 @@ private fun ModelCard(
                             onClick = { menuOpen = false; onDiagnostics() },
                         )
                         DropdownMenuItem(
-                            text = { Text("Configure") },
+                            text = { Text(t(UiKey.modelsConfigure)) },
                             leadingIcon = { Icon(Icons.Outlined.Tune, contentDescription = null) },
                             onClick = { menuOpen = false; onConfigure() },
                         )
@@ -522,7 +525,7 @@ private fun ModelCard(
                     StatusPill("Selected", MaterialTheme.colorScheme.primary)
                 }
                 if (loaded) {
-                    StatusPill("Loaded", MaterialTheme.colorScheme.secondary)
+                    StatusPill(t(UiKey.modelsLoaded), MaterialTheme.colorScheme.secondary)
                 }
                 Spacer(Modifier.weight(1f))
                 Text(
@@ -530,7 +533,7 @@ private fun ModelCard(
                         loadingPhase != null || validating || probing -> "Working…"
                         loaded -> "In memory"
                         model.validation == ModelValidation.HEADER_VALID && !model.runtimeValidated -> "Runtime untested"
-                        else -> "Not loaded"
+                        else -> t(UiKey.modelsNotLoaded)
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = extras.mutedText,
@@ -608,10 +611,10 @@ private fun ModelCard(
                             modifier = Modifier.size(14.dp),
                         )
                         Spacer(Modifier.width(6.dp))
-                        Text("Cancel")
+                        Text(t(UiKey.actionCancel))
                     }
 
-                    loaded -> OutlinedButton(onClick = onUnload) { Text("Unload") }
+                    loaded -> OutlinedButton(onClick = onUnload) { Text(t(UiKey.modelsUnload)) }
 
                     model.validation != ModelValidation.HEADER_VALID -> OutlinedButton(
                         onClick = onRevalidate,
@@ -622,7 +625,7 @@ private fun ModelCard(
                         onClick = onLoad,
                         enabled = loadEnabled,
                     ) {
-                        Text(if (loadEnabled) "Load" else "Backend off")
+                        Text(if (loadEnabled) t(UiKey.modelsLoad) else "Backend off")
                     }
                 }
             }
@@ -706,14 +709,14 @@ private fun LoadConfirmationDialog(
         confirmButton = {
             TextButton(onClick = onConfirm) {
                 Text(
-                    text = if (estimate.risk == ResourceRisk.RISKY) "Load anyway" else "Load",
+                    text = if (estimate.risk == ResourceRisk.RISKY) t(UiKey.modelsLoadAnyway) else t(UiKey.modelsLoad),
                     color = if (estimate.risk == ResourceRisk.RISKY) MaterialTheme.colorScheme.error
                     else MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(t(UiKey.actionCancel)) } },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     )
 }
@@ -803,7 +806,7 @@ private fun ConfigureModelDialog(
                 }
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Threads",
+                    text = t(UiKey.settingsThreads),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -831,7 +834,7 @@ private fun ConfigureModelDialog(
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Batch size",
+                    text = t(UiKey.settingsBatch),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
@@ -869,9 +872,9 @@ private fun ConfigureModelDialog(
         confirmButton = {
             TextButton(onClick = {
                 onSave(contextLength, threadCount, batchSize, 0)
-            }) { Text("Save", fontWeight = FontWeight.SemiBold) }
+            }) { Text(t(UiKey.actionSave), fontWeight = FontWeight.SemiBold) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(t(UiKey.actionCancel)) } },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     )
 }
@@ -898,7 +901,7 @@ private fun ModelDetailsDialog(
                     "Runtime status",
                     when {
                         model.runtimeValidated -> "compatible with this build"
-                        model.runtimeMessage != null -> "failed"
+                        model.runtimeMessage != null -> t(UiKey.chatToolFailed)
                         else -> "not tested yet"
                     },
                 )
@@ -942,7 +945,7 @@ private fun ModelDetailsDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
+            TextButton(onClick = onDismiss) { Text(t(UiKey.actionClose)) }
         },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     )
@@ -996,7 +999,7 @@ private fun DiagnosticsDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(t(UiKey.actionClose)) } },
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     )
 }

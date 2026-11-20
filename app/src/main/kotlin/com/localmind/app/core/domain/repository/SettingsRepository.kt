@@ -4,6 +4,7 @@ import com.localmind.app.core.domain.model.AppSettings
 import com.localmind.app.core.domain.model.GenerationParams
 import com.localmind.app.core.domain.model.RuntimeDefaults
 import com.localmind.app.core.domain.model.ThemeMode
+import com.localmind.app.core.i18n.AppLanguage
 import kotlinx.coroutines.flow.Flow
 
 interface SettingsRepository {
@@ -12,6 +13,8 @@ interface SettingsRepository {
     suspend fun current(): AppSettings
 
     suspend fun setThemeMode(mode: ThemeMode)
+
+    suspend fun setLanguage(language: AppLanguage)
 
     suspend fun setSystemPrompt(prompt: String)
 
