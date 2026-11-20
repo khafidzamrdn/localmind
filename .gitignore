@@ -13,3 +13,4 @@
 *.keystore
 !debug.keystore
 /build-native
+.kotlin/
